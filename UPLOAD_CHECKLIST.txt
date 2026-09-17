@@ -1,0 +1,36 @@
+UPLOAD THESE ITEMS TO THE ROOT OF YOUR GITHUB REPOSITORY:
+
+.github/
+  workflows/
+    update-news.yml
+
+docs/
+  index.html
+  app.js
+  styles.css
+  data/
+    latest.json
+    archives.json
+    archive/
+      2026-09-17.json   (starter archive; safe to upload)
+
+scripts/
+  update_news.py
+
+.gitignore
+README.md
+SECURITY.md
+UPLOAD_CHECKLIST.txt
+requirements.txt
+
+DO NOT UPLOAD:
+- any .env file
+- your OpenAI API key in any file
+- __pycache__ folders
+- .venv folders
+- screenshots or text containing the key
+
+ADD THE REAL API KEY ONLY IN THE GITHUB WEBSITE:
+Repository > Settings > Secrets and variables > Actions > New repository secret
+Name: OPENAI_API_KEY
+Value: your real API key

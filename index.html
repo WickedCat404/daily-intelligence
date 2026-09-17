@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>Daily Intelligence</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>Daily Intelligence</h1>
+      <p>Know what changed. Understand why it matters. Skip the noise.</p>
+    </div>
+    <div class="header-actions">
+      <span class="status"><i></i><span id="statusText">Loading…</span></span>
+      <button id="themeBtn" class="icon-btn" title="Toggle theme">◐</button>
+      <button id="refreshBtn" class="btn">Check latest</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside id="nav"></aside>
+    <main>
+      <section class="page-head">
+        <div><h2 id="pageTitle">Top 8</h2><p id="pageSubtitle">The smallest useful briefing across the biggest domains.</p></div>
+        <input id="searchInput" placeholder="Search recent intelligence…" />
+      </section>
+      <div id="pulse" class="pulse"></div>
+      <div id="content"><div class="loading">Loading briefing…</div></div>
+    </main>
+  </div>
+
+  <footer>
+    Static GitHub Pages edition. News is refreshed by GitHub Actions, clustered into stories, and linked back to the original publishers. Bookmarks and read state live only in this browser. Open original sources for full reporting and nuance.
+  </footer>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>
