@@ -376,38 +376,67 @@ SOURCES:
     return tuple(obj[k].strip() for k in keys)
 
 def enrich_with_ai(clusters):
-    if not OPENAI_API_KEY or AI_SUMMARY_LIMIT<=0:
+    if not OPENAI_API_KEY or AI_SUMMARY_LIMIT <= 0:
         return 'free-fallback'
 
-    old=previous_summaries()
-    client=OpenAI(api_key=OPENAI_API_KEY)
-    used=0
+    old = previous_summaries()
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    attempts = 0
 
     for c in clusters:
-        prior=old.get(c.get('cluster_key'))
+        prior = old.get(c.get('cluster_key'))
 
-        if prior and prior.get('summary_mode')=='openai':
-            c['summary_what']=prior.get('summary_what',c['summary_what'])
-            c['summary_why']=prior.get('summary_why',c['summary_why'])
-            c['summary_watch']=prior.get('summary_watch',c['summary_watch'])
-            c['summary_mode']='openai'
+        # Reuse an existing AI summary instead of paying for it again
+        if prior and prior.get('summary_mode') == 'openai':
+            c['summary_what'] = prior.get(
+                'summary_what',
+                c['summary_what']
+            )
+            c['summary_why'] = prior.get(
+                'summary_why',
+                c['summary_why']
+            )
+            c['summary_watch'] = prior.get(
+                'summary_watch',
+                c['summary_watch']
+            )
+            c['summary_mode'] = 'openai'
             continue
 
-        if used>=AI_SUMMARY_LIMIT:
-            continue
+        # Never make more than the configured number of API attempts
+        if attempts >= AI_SUMMARY_LIMIT:
+            break
+
+        attempts += 1
 
         try:
-            result=ai_summary_for_cluster(client,c)
+            result = ai_summary_for_cluster(client, c)
 
             if result:
-                c['summary_what'],c['summary_why'],c['summary_watch']=result
-                c['summary_mode']='openai'
-                used+=1
+                (
+                    c['summary_what'],
+                    c['summary_why'],
+                    c['summary_watch']
+                ) = result
+
+                c['summary_mode'] = 'openai'
 
         except Exception as e:
+            error_name = type(e).__name__
+
             print(
-                f'AI summary skipped for one cluster ({type(e).__name__})'
+                f'AI summary unavailable '
+                f'({error_name}); using fallback.'
             )
+
+            # Don't repeatedly hit OpenAI when the account
+            # is currently rate/quota limited.
+            if error_name == 'RateLimitError':
+                print(
+                    'OpenAI rate/quota limit reached. '
+                    'Stopping AI calls for this refresh.'
+                )
+                break
 
     return 'openai+fallback'
 
