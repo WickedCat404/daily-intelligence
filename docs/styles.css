@@ -830,6 +830,327 @@ a {
 }
 
 
+/* ============================================================
+   MARKETS — NEWSPAPER MODULE
+   ============================================================ */
+
+.markets-front-page {
+  width: 100%;
+}
+
+.markets-masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  padding-bottom: 14px;
+  margin-bottom: 28px;
+  border-bottom: 3px solid var(--text);
+}
+
+.markets-masthead h1 {
+  margin: 5px 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.markets-masthead p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+}
+
+.markets-updated {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.markets-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(220px, 0.75fr);
+  gap: 30px;
+  margin-bottom: 46px;
+}
+
+.market-lead {
+  min-width: 0;
+}
+
+.market-lead-kicker {
+  margin-bottom: 9px;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.market-lead h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(29px, 4vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.market-lead-summary {
+  margin: 14px 0;
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.market-meta {
+  margin-top: 10px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.market-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.market-meta a:hover {
+  text-decoration: underline;
+}
+
+.market-secondary {
+  min-width: 0;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+
+.market-secondary-item {
+  padding: 0 0 17px;
+  margin-bottom: 17px;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-secondary-item:last-child {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+.market-secondary-item h3 {
+  margin: 5px 0 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+}
+
+.market-section {
+  margin: 0 0 48px;
+}
+
+.market-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  padding: 0 0 9px;
+  margin-bottom: 4px;
+  border-bottom: 2px solid var(--text);
+}
+
+.market-section-header h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+.market-section-header span {
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.market-news-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.market-news-column {
+  min-width: 0;
+}
+
+.market-news-column + .market-news-column {
+  padding-left: 30px;
+  border-left: 1px solid var(--border);
+}
+
+.market-column-title {
+  margin: 18px 0 4px;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.market-headline-row {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-headline-row:last-child {
+  border-bottom: 0;
+}
+
+.market-headline-row h3 {
+  margin: 0 0 7px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  line-height: 1.27;
+  letter-spacing: -0.012em;
+}
+
+.market-headline-row p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13.5px;
+  line-height: 1.48;
+}
+
+.market-headline-row a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.market-headline-row a:hover h3 {
+  text-decoration: underline;
+}
+
+.market-transmission,
+.market-impact {
+  margin-top: 11px;
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.market-transmission strong,
+.market-impact strong {
+  color: var(--text);
+}
+
+
+/* IPO */
+
+.ipo-newspaper-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  margin-top: 18px;
+}
+
+.ipo-newspaper-item {
+  min-width: 0;
+  padding: 17px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.ipo-status {
+  margin-bottom: 10px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.ipo-newspaper-item h3 {
+  margin: 0 0 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.ipo-facts {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ipo-facts strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+
+/* STOCKS & COMPANIES */
+
+.company-news-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  gap: 32px;
+}
+
+.company-news-layout > * + * {
+  padding-left: 30px;
+  border-left: 1px solid var(--border);
+}
+
+
+/* MUTUAL FUNDS */
+
+.market-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.market-two-column > * + * {
+  padding-left: 30px;
+  border-left: 1px solid var(--border);
+}
+
+
+/* INVESTOR CONVERSATION */
+
+.investor-conversation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.investor-conversation-item {
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.market-editorial-note {
+  margin-top: 32px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+
 /* TABLET */
 
 @media (max-width: 1000px) {
@@ -844,6 +1165,15 @@ a {
 
   .category-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .markets-top-grid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(200px, 0.8fr);
+    gap: 24px;
+  }
+
+  .ipo-newspaper-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1034,6 +1364,65 @@ a {
     width: calc(100% - 30px);
     display: block;
     line-height: 1.7;
+  }
+
+
+  /* MARKETS MOBILE */
+
+  .markets-masthead {
+    display: block;
+    margin-bottom: 22px;
+  }
+
+  .markets-masthead h1 {
+    font-size: 33px;
+  }
+
+  .markets-updated {
+    margin-top: 10px;
+  }
+
+  .markets-top-grid,
+  .market-news-columns,
+  .company-news-layout,
+  .market-two-column,
+  .investor-conversation-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .market-secondary {
+    margin-top: 25px;
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--text);
+  }
+
+  .market-news-column + .market-news-column,
+  .company-news-layout > * + *,
+  .market-two-column > * + * {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .market-news-column + .market-news-column {
+    margin-top: 28px;
+  }
+
+  .ipo-newspaper-grid {
+    display: block;
+  }
+
+  .ipo-newspaper-item {
+    border-left: 0;
+  }
+
+  .market-section {
+    margin-bottom: 39px;
+  }
+
+  .market-lead h2 {
+    font-size: 29px;
   }
 }
 
