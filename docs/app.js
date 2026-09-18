@@ -1,2192 +1,3952 @@
-(() => {
-  'use strict';
+const DATA_URL = "./data/latest.json";
+const ARCHIVES_URL = "./data/archives.json";
 
-  /* =========================================================
-     HELPERS
-     ========================================================= */
+const state = {
+  data: null,
+  clusters: [],
+  top: [],
+  markets: {},
+  currentView: "brief",
+  currentCategory: null,
 
-  const $ = (selector, root = document) =>
-    root.querySelector(selector);
+  saved: new Set(
+    JSON.parse(
+      localStorage.getItem("di_saved") || "[]"
+    )
+  ),
 
-  const $$ = (selector, root = document) =>
-    [...root.querySelectorAll(selector)];
+  previousVisit:
+    localStorage.getItem("di_last_visit"),
 
-  const esc = (value = '') =>
-    String(value).replace(/[&<>"']/g, char => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[char]));
-
-  const A = value =>
-    Array.isArray(value) ? value : [];
-
-  const F = (...values) =>
-    values.find(
-      value =>
-        value !== undefined &&
-        value !== null &&
-        value !== ''
-    );
+  currentVisit:
+    new Date().toISOString()
+};
 
 
-  /* =========================================================
-     STATE
-     ========================================================= */
-
-  const S = {
-    data: {},
-    clusters: [],
-    brief: [],
-    view: 'brief',
-    category: null,
-
-    saved: new Set(
-      JSON.parse(
-        localStorage.getItem('di:saved') || '[]'
-      )
-    ),
-
-    lastVisit:
-      localStorage.getItem('di:lastVisit')
-  };
+const $ = id =>
+  document.getElementById(id);
 
 
-  /* =========================================================
-     CATEGORY LABELS
-     ========================================================= */
+const els = {
+  menuOverlay: $("menuOverlay"),
 
-  const catMap = {
-    'Macro Economics': 'Economy & Policy',
-    'Business & Micro': 'Business'
-  };
+  openMenu: $("openMenu"),
+  closeMenu: $("closeMenu"),
 
+  searchButton: $("searchButton"),
+  desktopSearchTrigger:
+    $("desktopSearchTrigger"),
 
-  /* =========================================================
-     STORY DATA NORMALISATION
-     ========================================================= */
+  searchPanel: $("searchPanel"),
+  searchInput: $("searchInput"),
+  closeSearch: $("closeSearch"),
 
-  const key = cluster =>
-    String(
-      F(
-        cluster.cluster_key,
-        cluster.id,
-        cluster.primary?.url,
-        cluster.url,
-        cluster.title,
-        ''
-      )
-    );
+  themeButton: $("themeButton"),
+  sidebarThemeButton:
+    $("sidebarThemeButton"),
 
-  const score = cluster =>
-    Number(
-      F(
-        cluster.importance,
-        cluster.signal_score,
-        cluster.primary?.signal_score,
-        0
-      )
-    ) || 0;
+  eyebrow: $("eyebrow"),
+  todayDate: $("todayDate"),
 
-  const category = cluster =>
-    F(
-      cluster.category,
-      cluster.primary?.category,
-      cluster.primary?.base_category,
-      'General'
-    );
+  topbarDate: $("topbarDate"),
+  topbarUpdated: $("topbarUpdated"),
 
-  const displayCat = cluster =>
-    catMap[category(cluster)] ||
-    category(cluster);
+  pageTitle: $("pageTitle"),
+  pageDescription:
+    $("pageDescription"),
 
-  const desc = cluster =>
-    F(
-      cluster.brief,
-      cluster.description,
-      cluster.primary?.description,
-      A(cluster.articles)[0]?.description,
-      ''
-    );
+  lastUpdated: $("lastUpdated"),
 
-  const url = cluster =>
-    F(
-      cluster.primary?.url,
-      cluster.url,
-      A(cluster.articles)[0]?.url,
-      '#'
-    );
+  sidebarHealthDot:
+    $("sidebarHealthDot"),
 
-  const source = cluster =>
-    F(
-      cluster.primary?.source,
-      cluster.primary_source,
-      A(cluster.sources)[0]?.source,
-      A(cluster.sources)[0]?.name,
+  healthDot: $("healthDot"),
+  sidebarStatus: $("sidebarStatus"),
 
-      typeof A(cluster.sources)[0] === 'string'
-        ? A(cluster.sources)[0]
-        : null,
+  sinceLastPanel:
+    $("sinceLastPanel"),
 
-      A(cluster.articles)[0]?.source,
-      'Source'
-    );
+  sinceSummary: $("sinceSummary"),
+  viewSinceButton:
+    $("viewSinceButton"),
 
-  const date = cluster =>
-    F(
-      cluster.published_at,
-      cluster.primary?.published_at,
-      A(cluster.articles)[0]?.published_at
-    );
+  contentView: $("contentView"),
 
-  const label = cluster => {
-    const existing = String(
-      F(cluster.importance_label, '')
-    ).toLowerCase();
+  contextRail: $("contextRail"),
 
-    if (existing.includes('critical')) {
-      return 'Critical';
-    }
+  glanceGrid: $("glanceGrid"),
 
-    if (existing.includes('significant')) {
-      return 'Significant';
-    }
+  changedSummary:
+    $("changedSummary"),
 
-    if (existing.includes('noteworthy')) {
-      return 'Noteworthy';
-    }
+  contextSinceButton:
+    $("contextSinceButton"),
 
-    if (score(cluster) >= 70) {
-      return 'Critical';
-    }
+  topicChips: $("topicChips"),
 
-    if (score(cluster) >= 43) {
-      return 'Significant';
-    }
-
-    return 'Noteworthy';
-  };
-
-  const ago = value => {
-    if (!value) return '';
-
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return '';
-    }
-
-    const minutes = Math.max(
-      1,
-      Math.floor(
-        (Date.now() - parsed.getTime()) / 60000
-      )
-    );
-
-    if (minutes < 60) {
-      return `${minutes}m ago`;
-    }
-
-    if (minutes < 1440) {
-      return `${Math.floor(minutes / 60)}h ago`;
-    }
-
-    return `${Math.floor(minutes / 1440)}d ago`;
-  };
-
-  const count = cluster =>
-    Number(cluster.source_count) ||
-    A(cluster.sources).length ||
-    A(cluster.articles).length ||
-    1;
+  sourceSheet: $("sourceSheet"),
+  sheetBackdrop: $("sheetBackdrop"),
+  closeSheet: $("closeSheet"),
+  sheetTitle: $("sheetTitle"),
+  sheetSources: $("sheetSources")
+};
 
 
-  /* =========================================================
-     FIND STORY COLLECTION IN latest.json
-     ========================================================= */
+/* ============================================================
+   BASIC HELPERS
+============================================================ */
 
-  function clustersOf(data) {
-    for (const key of [
-      'clusters',
-      'events',
-      'items',
-      'stories',
-      'developments',
-      'news'
-    ]) {
-      if (A(data[key]).length) {
-        return data[key];
-      }
-    }
+function esc(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-    for (const value of Object.values(data || {})) {
-      if (
-        A(value).length &&
-        typeof value[0] === 'object' &&
-        (
-          'title' in value[0] ||
-          'cluster_key' in value[0]
-        )
-      ) {
-        return value;
-      }
-    }
 
-    return [];
+function clean(value = "") {
+  const div =
+    document.createElement("div");
+
+  div.innerHTML = value;
+
+  return (
+    div.textContent ||
+    div.innerText ||
+    ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function trunc(value, limit = 55) {
+  const words =
+    clean(value)
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (words.length <= limit) {
+    return words.join(" ");
   }
 
+  return (
+    words
+      .slice(0, limit)
+      .join(" ")
+    + "…"
+  );
+}
 
-  /* =========================================================
-     BUILD THE DAILY BRIEF
-     ========================================================= */
 
-  function briefOf(data, clusters) {
-    for (const key of [
-      'brief',
-      'daily_brief',
-      'top_stories',
-      'must_know'
-    ]) {
-      const brief = data[key];
+function date(value) {
+  if (!value) {
+    return null;
+  }
 
-      if (!A(brief).length) {
-        continue;
+  const parsed =
+    new Date(value);
+
+  return Number.isNaN(
+    parsed.getTime()
+  )
+    ? null
+    : parsed;
+}
+
+
+function ago(value) {
+  const parsed =
+    date(value);
+
+  if (!parsed) {
+    return "";
+  }
+
+  const seconds =
+    Math.max(
+      0,
+      (
+        Date.now() -
+        parsed.getTime()
+      ) / 1000
+    );
+
+  if (seconds < 60) {
+    return "just now";
+  }
+
+  const minutes =
+    Math.floor(
+      seconds / 60
+    );
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours =
+    Math.floor(
+      minutes / 60
+    );
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days =
+    Math.floor(
+      hours / 24
+    );
+
+  return days === 1
+    ? "yesterday"
+    : `${days}d ago`;
+}
+
+
+function clock(value) {
+  const parsed =
+    date(value);
+
+  if (!parsed) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-IN",
+    {
+      hour: "numeric",
+      minute: "2-digit"
+    }
+  ).format(parsed);
+}
+
+
+function stamp(story) {
+  return (
+    story?.published_at ||
+    story?.primary?.published_at ||
+    story?.articles?.[0]?.published_at ||
+    ""
+  );
+}
+
+
+function key(story) {
+  return (
+    story?.cluster_key ||
+    story?.url ||
+    story?.title ||
+    ""
+  );
+}
+
+
+function url(story) {
+  return (
+    story?.primary?.url ||
+    story?.articles?.[0]?.url ||
+    story?.url ||
+    "#"
+  );
+}
+
+
+function publisher(story) {
+  return (
+    story?.primary?.source ||
+    story?.sources?.[0] ||
+    "Source"
+  );
+}
+
+
+function sourceCount(story) {
+  return (
+    Number(
+      story?.source_count
+    ) ||
+    (
+      Array.isArray(
+        story?.sources
+      )
+        ? story.sources.length
+        : 0
+    ) ||
+    (
+      Array.isArray(
+        story?.articles
+      )
+        ? story.articles.length
+        : 0
+    ) ||
+    1
+  );
+}
+
+
+function summary(
+  story,
+  limit = 55
+) {
+  return trunc(
+    story?.brief ||
+    story?.description ||
+    story?.primary?.description ||
+    "",
+    limit
+  );
+}
+
+
+/* ============================================================
+   REAL STORY IMAGES
+============================================================ */
+
+function imageUrl(story) {
+  if (!story) {
+    return "";
+  }
+
+  if (story.image_url) {
+    return story.image_url;
+  }
+
+  if (
+    story.primary?.image_url
+  ) {
+    return (
+      story.primary.image_url
+    );
+  }
+
+  if (
+    Array.isArray(
+      story.articles
+    )
+  ) {
+    const article =
+      story.articles.find(
+        item =>
+          item?.image_url
+      );
+
+    if (article?.image_url) {
+      return article.image_url;
+    }
+  }
+
+  return "";
+}
+
+
+function visualMarkup(
+  story,
+  kind = "card"
+) {
+  const image =
+    imageUrl(story);
+
+  if (image) {
+    return `
+      <div
+        class="story-visual ${esc(kind)}"
+      >
+        <img
+          src="${esc(image)}"
+          alt=""
+          loading="${
+            kind === "hero"
+              ? "eager"
+              : "lazy"
+          }"
+          decoding="async"
+          referrerpolicy="no-referrer"
+          onerror="
+            this.parentElement.classList.add('image-failed');
+            this.remove();
+          "
+        >
+      </div>
+    `;
+  }
+
+  /*
+   * Deliberately restrained fallback.
+   * No fabricated stock imagery.
+   */
+  return `
+    <div
+      class="story-visual visual-fallback ${esc(kind)}"
+      aria-hidden="true"
+    >
+      <span>DI</span>
+      <strong>
+        ${esc(
+          cat(
+            story?.category ||
+            "Intelligence"
+          )
+        )}
+      </strong>
+    </div>
+  `;
+}
+
+
+/* ============================================================
+   CATEGORY HELPERS
+============================================================ */
+
+function cat(category) {
+  return (
+    {
+      "Macro Economics":
+        "Economy & Policy",
+
+      "Business & Micro":
+        "Business",
+
+      "Companies & Earnings":
+        "Companies",
+
+      "Global → India":
+        "Global → India",
+
+      "Indian Markets":
+        "Markets"
+    }[category] ||
+    category
+  );
+}
+
+
+function norm(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(
+      /[^a-z0-9]+/g,
+      " "
+    )
+    .trim();
+}
+
+
+const CATEGORY_ALIASES = {
+  "Indian Politics": [
+    "indian politics",
+    "india politics",
+    "politics india",
+    "national politics",
+    "politics"
+  ],
+
+  "Macro Economics": [
+    "macro economics",
+    "economy policy",
+    "economy and policy",
+    "indian economy",
+    "economy"
+  ],
+
+  "Business & Micro": [
+    "business micro",
+    "business and micro",
+    "business"
+  ],
+
+  "Companies & Earnings": [
+    "companies earnings",
+    "companies and earnings",
+    "corporate india",
+    "companies"
+  ],
+
+  "Indian Markets": [
+    "indian markets",
+    "markets india",
+    "markets"
+  ],
+
+  "Global → India": [
+    "global india",
+    "global to india"
+  ],
+
+  "World Politics": [
+    "world politics",
+    "global politics",
+    "international politics"
+  ],
+
+  "Science & Climate": [
+    "science climate",
+    "science and climate",
+    "climate science"
+  ]
+};
+
+
+function matchesCategory(
+  story,
+  wanted
+) {
+  const actual =
+    norm(
+      story?.category || ""
+    );
+
+  const targets =
+    (
+      CATEGORY_ALIASES[
+        wanted
+      ] ||
+      [wanted]
+    ).map(norm);
+
+  if (
+    targets.includes(actual)
+  ) {
+    return true;
+  }
+
+  /*
+   * Politics feeds are currently weak.
+   * This is only a conservative fallback
+   * for already-India-classified stories.
+   */
+  if (
+    wanted ===
+    "Indian Politics"
+  ) {
+    const text =
+      norm(
+        `${
+          story?.title || ""
+        } ${
+          story?.description || ""
+        }`
+      );
+
+    return (
+      (
+        actual === "india" ||
+        actual === "politics"
+      ) &&
+      /\b(parliament|lok sabha|rajya sabha|bjp|congress|election|minister|government|opposition|cabinet|political)\b/
+        .test(text)
+    );
+  }
+
+  return false;
+}
+
+
+/* ============================================================
+   COLLECTION HELPERS
+============================================================ */
+
+function dedupe(
+  stories = []
+) {
+  const seen =
+    new Set();
+
+  return stories.filter(
+    story => {
+      const storyKey =
+        key(story);
+
+      if (
+        !storyKey ||
+        seen.has(storyKey)
+      ) {
+        return false;
       }
 
-      if (typeof brief[0] === 'object') {
-        return brief;
-      }
+      seen.add(storyKey);
 
-      const ids = new Set(
+      return true;
+    }
+  );
+}
+
+
+function sortStories(
+  stories = []
+) {
+  return [
+    ...stories
+  ].sort(
+    (a, b) =>
+      (
+        Number(
+          b?.importance || 0
+        ) -
+        Number(
+          a?.importance || 0
+        )
+      ) ||
+      (
+        (
+          date(
+            stamp(b)
+          )?.getTime() ||
+          0
+        ) -
+        (
+          date(
+            stamp(a)
+          )?.getTime() ||
+          0
+        )
+      )
+  );
+}
+
+
+function level(story) {
+  const value =
+    String(
+      story?.importance_label ||
+      ""
+    ).toLowerCase();
+
+  if (
+    [
+      "critical",
+      "significant",
+      "noteworthy"
+    ].includes(value)
+  ) {
+    return value;
+  }
+
+  const score =
+    Number(
+      story?.importance || 0
+    );
+
+  if (score >= 70) {
+    return "critical";
+  }
+
+  if (score >= 43) {
+    return "significant";
+  }
+
+  return "noteworthy";
+}
+
+
+function fresh(story) {
+  const published =
+    date(
+      stamp(story)
+    );
+
+  const previous =
+    date(
+      state.previousVisit
+    );
+
+  return Boolean(
+    published &&
+    previous &&
+    published > previous
+  );
+}
+
+
+function saved(story) {
+  return state.saved.has(
+    key(story)
+  );
+}
+
+
+function categoryStories(
+  category
+) {
+  return sortStories(
+    state.clusters.filter(
+      story =>
+        matchesCategory(
+          story,
+          category
+        )
+    )
+  );
+}
+
+
+/* ============================================================
+   BRIEF SELECTION
+============================================================ */
+
+function briefOf(
+  data,
+  clusters
+) {
+  const fields = [
+    "top",
+    "brief",
+    "daily_brief",
+    "top_stories",
+    "must_know"
+  ];
+
+  for (
+    const fieldName
+    of fields
+  ) {
+    const brief =
+      data?.[fieldName];
+
+    if (
+      !Array.isArray(brief) ||
+      !brief.length
+    ) {
+      continue;
+    }
+
+    if (
+      typeof brief[0]
+      === "object"
+    ) {
+      return brief;
+    }
+
+    const ids =
+      new Set(
         brief.map(String)
       );
 
-      const matched =
-        clusters.filter(cluster =>
-          ids.has(key(cluster))
+    const matched =
+      clusters.filter(
+        cluster =>
+          ids.has(
+            String(
+              key(cluster)
+            )
+          )
+      );
+
+    if (matched.length) {
+      return matched;
+    }
+  }
+
+  return sortStories(
+    clusters
+  ).slice(0, 8);
+}
+
+
+function displayBrief() {
+  return dedupe(
+    state.top.length
+      ? state.top
+      : sortStories(
+          state.clusters
+        )
+  ).slice(0, 5);
+}
+
+
+/* ============================================================
+   SAVE / BOOKMARK
+============================================================ */
+
+function toggleSaved(
+  story
+) {
+  const storyKey =
+    key(story);
+
+  if (!storyKey) {
+    return;
+  }
+
+  if (
+    state.saved.has(
+      storyKey
+    )
+  ) {
+    state.saved.delete(
+      storyKey
+    );
+  } else {
+    state.saved.add(
+      storyKey
+    );
+  }
+
+  localStorage.setItem(
+    "di_saved",
+    JSON.stringify(
+      [...state.saved]
+    )
+  );
+
+  renderCurrent();
+}
+
+
+/* ============================================================
+   PAGE HEADER
+============================================================ */
+
+function setHeader(
+  eyebrow,
+  title,
+  description
+) {
+  if (els.eyebrow) {
+    els.eyebrow.textContent =
+      eyebrow;
+  }
+
+  /*
+   * Kept for compatibility with
+   * the hidden legacy element.
+   */
+  if (els.todayDate) {
+    els.todayDate.textContent =
+      eyebrow;
+  }
+
+  if (els.pageTitle) {
+    els.pageTitle.textContent =
+      title;
+  }
+
+  if (
+    els.pageDescription
+  ) {
+    els.pageDescription.textContent =
+      description;
+  }
+}
+
+
+function showSince(
+  visible = true
+) {
+  els.sinceLastPanel
+    ?.classList
+    .toggle(
+      "hidden",
+      !visible
+    );
+}
+
+
+/* ============================================================
+   ACTIVE NAVIGATION
+============================================================ */
+
+function setActive({
+  view = null,
+  category = null
+} = {}) {
+  document
+    .querySelectorAll(
+      ".nav-item, .mobile-nav-item"
+    )
+    .forEach(button => {
+      button.classList.remove(
+        "active"
+      );
+
+      if (
+        view &&
+        button.dataset.view
+        === view
+      ) {
+        button.classList.add(
+          "active"
         );
-
-      if (matched.length) {
-        return matched;
       }
-    }
 
-    return [...clusters]
-      .sort(
-        (a, b) =>
-          score(b) - score(a)
-      )
-      .slice(0, 5);
+      if (
+        category &&
+        button.dataset.category
+        === category
+      ) {
+        button.classList.add(
+          "active"
+        );
+      }
+    });
+}
+
+
+/* ============================================================
+   STORY META
+============================================================ */
+
+function meta(story) {
+  const count =
+    sourceCount(story);
+
+  return `
+    <div class="story-meta">
+
+      <span>
+        ${esc(
+          publisher(story)
+        )}
+      </span>
+
+      <span>·</span>
+
+      <span>
+        ${esc(
+          ago(
+            stamp(story)
+          )
+        )}
+      </span>
+
+      <span>·</span>
+
+      <span>
+        ${count}
+        ${
+          count === 1
+            ? "source"
+            : "sources"
+        }
+      </span>
+
+    </div>
+  `;
+}
+
+
+function why(story) {
+  const value =
+    story?.why_it_matters ||
+    story?.market_impact ||
+    story?.context ||
+    "";
+
+  if (!value) {
+    return "";
   }
 
+  return `
+    <div class="why-matters">
+      <strong>
+        Why it matters
+      </strong>
 
-  /* =========================================================
-     EDITORIAL VISUAL FALLBACK
-     ========================================================= */
-
-  function visualClass(cluster) {
-    const text =
-      `${displayCat(cluster)} ${cluster.title || ''}`
-        .toLowerCase();
-
-    if (
-      /market|econom|business|rbi|bank|stock|ipo/.test(text)
-    ) {
-      return 'market';
-    }
-
-    if (
-      /ai|tech|compute|chip|digital/.test(text)
-    ) {
-      return 'tech';
-    }
-
-    if (
-      /world|geo|war|china|russia|united states|us /.test(text)
-    ) {
-      return 'world';
-    }
-
-    if (
-      /science|climate|space|research/.test(text)
-    ) {
-      return 'science';
-    }
-
-    return 'india';
-  }
-
-  function visual(cluster, small = false) {
-    return `
-      <div
-        class="editorial-visual ${visualClass(cluster)} ${small ? 'small' : ''}"
-        aria-hidden="true"
-      >
-        <span>
-          ${esc(displayCat(cluster))}
-        </span>
-
-        <i></i>
-
-        <b>DI</b>
-      </div>
-    `;
-  }
+      <span>
+        ${esc(
+          trunc(
+            value,
+            38
+          )
+        )}
+      </span>
+    </div>
+  `;
+}
 
 
-  /* =========================================================
-     STORY COMPONENTS
-     ========================================================= */
+/* ============================================================
+   STORY ACTIONS
+============================================================ */
 
-  function meta(cluster) {
-    const sourceCount = count(cluster);
+function actions(
+  story,
+  id
+) {
+  const count =
+    sourceCount(story);
 
-    return `
-      ${esc(source(cluster))}
-      ·
-      ${esc(ago(date(cluster)))}
-      ·
-      ${sourceCount}
-      source${sourceCount === 1 ? '' : 's'}
-    `;
-  }
+  return `
+    <div class="story-actions">
 
-  function saveBtn(cluster) {
-    const storyKey = key(cluster);
-    const saved = S.saved.has(storyKey);
-
-    return `
       <button
-        class="bookmark ${saved ? 'saved' : ''}"
-        data-save="${esc(storyKey)}"
-        aria-label="Save story"
-        type="button"
+        class="story-action"
+        data-source="${esc(id)}"
       >
-        ${saved ? '★' : '☆'}
+        ${
+          count > 1
+            ? `View ${count} sources`
+            : "View source"
+        }
       </button>
-    `;
-  }
 
-  function storyLink(cluster) {
-    return `
       <a
-        href="${esc(url(cluster))}"
+        class="story-action"
+        href="${esc(
+          url(story)
+        )}"
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener"
       >
-        ${esc(cluster.title || 'Untitled')}
+        Read
+        ${esc(
+          publisher(story)
+        )}
+        →
       </a>
-    `;
+
+      <button
+        class="story-action save-button ${
+          saved(story)
+            ? "saved"
+            : ""
+        }"
+        data-save="${esc(id)}"
+        aria-label="${
+          saved(story)
+            ? "Remove bookmark"
+            : "Save story"
+        }"
+      >
+        ${
+          saved(story)
+            ? "★ Saved"
+            : "☆ Save"
+        }
+      </button>
+
+    </div>
+  `;
+}
+
+
+/* ============================================================
+   MAIN STORY MARKUP
+============================================================ */
+
+function storyMarkup(
+  story,
+  kind = "normal"
+) {
+  const id =
+    encodeURIComponent(
+      key(story)
+    );
+
+  const lead =
+    kind === "lead";
+
+  const secondary =
+    kind === "secondary";
+
+  const importance =
+    level(story);
+
+  const summaryLimit =
+    lead
+      ? 46
+      : secondary
+        ? 24
+        : 36;
+
+  return `
+    <article
+      class="${
+        lead
+          ? "lead-story"
+          : secondary
+            ? "secondary-story"
+            : "story-card"
+      }"
+    >
+
+      ${
+        lead
+          ? visualMarkup(
+              story,
+              "hero"
+            )
+          : secondary
+            ? visualMarkup(
+                story,
+                "card"
+              )
+            : ""
+      }
+
+      <div class="story-body">
+
+        <div class="story-topline">
+
+          <span
+            class="importance-label ${esc(
+              importance
+            )}"
+          >
+            ${esc(
+              importance
+            )}
+          </span>
+
+          <span
+            class="category-label"
+          >
+            ${esc(
+              cat(
+                story?.category ||
+                "News"
+              )
+            )}
+          </span>
+
+          ${
+            fresh(story)
+              ? `
+                <span
+                  class="story-state"
+                >
+                  NEW
+                </span>
+              `
+              : ""
+          }
+
+        </div>
+
+        <h3 class="story-title">
+          ${esc(
+            story?.title || ""
+          )}
+        </h3>
+
+        ${
+          summary(
+            story,
+            summaryLimit
+          )
+            ? `
+              <p
+                class="story-summary"
+              >
+                ${esc(
+                  summary(
+                    story,
+                    summaryLimit
+                  )
+                )}
+              </p>
+            `
+            : ""
+        }
+
+        ${
+          lead
+            ? why(story)
+            : ""
+        }
+
+        ${meta(story)}
+
+        ${
+          actions(
+            story,
+            id
+          )
+        }
+
+      </div>
+
+    </article>
+  `;
+}
+
+
+/* ============================================================
+   FIND STORY
+============================================================ */
+
+function findStory(
+  encodedKey
+) {
+  return (
+    state.clusters.find(
+      story =>
+        encodeURIComponent(
+          key(story)
+        ) === encodedKey
+    ) ||
+    state.top.find(
+      story =>
+        encodeURIComponent(
+          key(story)
+        ) === encodedKey
+    )
+  );
+}
+
+
+/* ============================================================
+   STORY ACTION BINDINGS
+============================================================ */
+
+function wireStoryActions() {
+  document
+    .querySelectorAll(
+      "[data-source]"
+    )
+    .forEach(button => {
+      button.onclick =
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const story =
+            findStory(
+              button.dataset.source
+            );
+
+          if (story) {
+            openSources(story);
+          }
+        };
+    });
+
+
+  document
+    .querySelectorAll(
+      "[data-save]"
+    )
+    .forEach(button => {
+      button.onclick =
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const story =
+            findStory(
+              button.dataset.save
+            );
+
+          if (story) {
+            toggleSaved(story);
+          }
+        };
+    });
+}
+
+
+/* ============================================================
+   EMPTY STATE
+============================================================ */
+
+function empty(
+  title,
+  description
+) {
+  if (!els.contentView) {
+    return;
   }
 
-  function storyLabel(cluster) {
-    return `
-      <div class="story-label">
+  els.contentView.innerHTML = `
+    <section class="empty-state">
 
-        <span
-          class="dot ${label(cluster).toLowerCase()}"
-        ></span>
+      <div
+        class="empty-state-icon"
+      >
+        ◇
+      </div>
 
-        ${esc(label(cluster))}
+      <h2>
+        ${esc(title)}
+      </h2>
 
-        <em>
-          ${esc(displayCat(cluster))}
-        </em>
+      <p>
+        ${esc(description)}
+      </p>
 
+      <button
+        class="primary-button"
+        id="emptyHome"
+      >
+        Back to The Brief
+      </button>
+
+    </section>
+  `;
+
+  $("emptyHome")
+    ?.addEventListener(
+      "click",
+      renderBrief
+    );
+}
+
+
+/* ============================================================
+   EXPLORE TOPICS
+============================================================ */
+
+const EXPLORE = [
+  "India",
+  "Indian Politics",
+  "Macro Economics",
+  "Business & Micro",
+  "Indian Markets",
+  "World",
+  "Geopolitics",
+  "AI",
+  "Technology",
+  "Science & Climate"
+];
+
+
+/* ============================================================
+   RIGHT CONTEXT RAIL
+============================================================ */
+
+function renderRail() {
+  if (
+    !els.contextRail
+  ) {
+    return;
+  }
+
+  const brief =
+    displayBrief();
+
+  const developing =
+    state.clusters.filter(
+      story =>
+        story?.is_developing
+    );
+
+  if (els.glanceGrid) {
+    els.glanceGrid.innerHTML = `
+      <div
+        class="glance-item"
+      >
+        <div
+          class="glance-value"
+        >
+          ${brief.length}
+        </div>
+
+        <div
+          class="glance-name"
+        >
+          in today's brief
+        </div>
+      </div>
+
+      <div
+        class="glance-item"
+      >
+        <div
+          class="glance-value"
+        >
+          ${developing.length}
+        </div>
+
+        <div
+          class="glance-name"
+        >
+          developing stories
+        </div>
+      </div>
+
+      <div
+        class="glance-item"
+      >
+        <div
+          class="glance-value"
+        >
+          ${
+            state.data
+              ?.article_count ||
+            0
+          }
+        </div>
+
+        <div
+          class="glance-name"
+        >
+          articles scanned
+        </div>
+      </div>
+
+      <div
+        class="glance-item"
+      >
+        <div
+          class="glance-value"
+        >
+          ${
+            state.clusters
+              .length
+          }
+        </div>
+
+        <div
+          class="glance-name"
+        >
+          events clustered
+        </div>
       </div>
     `;
   }
 
 
-  /* =========================================================
-     HERO STORY
-     ========================================================= */
+  const changed =
+    state.previousVisit
+      ? state.clusters.filter(
+          fresh
+        )
+      : [];
 
-  function lead(cluster) {
-    return `
-      <article class="lead-card">
 
-        ${visual(cluster)}
+  if (
+    els.changedSummary
+  ) {
+    els.changedSummary.textContent =
+      state.previousVisit
+        ? (
+            changed.length
+              ? `${
+                  Math.min(
+                    changed.length,
+                    12
+                  )
+                } developments are worth catching up on.`
+              : "You're caught up."
+          )
+        : "Your catch-up starts on your next visit.";
+  }
 
-        <div class="lead-copy">
 
-          ${storyLabel(cluster)}
+  if (
+    els.topicChips
+  ) {
+    els.topicChips.innerHTML =
+      EXPLORE
+        .slice(0, 7)
+        .map(
+          category => `
+            <button
+              class="topic-chip"
+              data-chip="${esc(
+                category
+              )}"
+            >
+              ${esc(
+                cat(category)
+              )}
+            </button>
+          `
+        )
+        .join("");
+
+
+    document
+      .querySelectorAll(
+        "[data-chip]"
+      )
+      .forEach(
+        button => {
+          button.onclick =
+            () =>
+              showCategory(
+                button.dataset.chip
+              );
+        }
+      );
+  }
+}
+
+
+/* ============================================================
+   DEVELOPING TIMELINE DATA
+============================================================ */
+
+function developingStories() {
+  const explicit =
+    sortStories(
+      state.clusters.filter(
+        story =>
+          story?.is_developing
+      )
+    );
+
+  if (explicit.length) {
+    return explicit;
+  }
+
+  /*
+   * The backend currently has very few explicit developing
+   * flags. On The Brief we can still show a restrained
+   * "recent signal" timeline using highly ranked recent
+   * developments, without labelling them as breaking news.
+   */
+  const cutoff =
+    Date.now() -
+    12 * 60 * 60 * 1000;
+
+  return sortStories(
+    state.clusters.filter(
+      story => {
+        const published =
+          date(
+            stamp(story)
+          );
+
+        return (
+          published &&
+          published.getTime()
+          >= cutoff &&
+          Number(
+            story?.importance ||
+            0
+          ) >= 43
+        );
+      }
+    )
+  );
+}
+/* ============================================================
+   THE BRIEF
+============================================================ */
+
+function renderBrief() {
+  state.currentView =
+    "brief";
+
+  state.currentCategory =
+    null;
+
+  setActive({
+    view: "brief"
+  });
+
+  setHeader(
+    "TODAY'S BRIEF",
+    "5 developments worth your attention",
+    "A focused view on what's important in India, the world and beyond."
+  );
+
+  showSince(true);
+
+  const stories =
+    displayBrief();
+
+  if (!stories.length) {
+    empty(
+      "The Brief is still forming",
+      "No sufficiently important developments are available yet."
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  const lead =
+    stories[0];
+
+  const supporting =
+    stories.slice(
+      1,
+      5
+    );
+
+  const recent =
+    developingStories()
+      .filter(
+        story =>
+          key(story) !==
+          key(lead)
+      )
+      .slice(0, 3);
+
+  els.contentView.innerHTML = `
+    <section
+      class="brief-layout"
+    >
+
+      <div
+        class="brief-lead"
+      >
+        ${storyMarkup(
+          lead,
+          "lead"
+        )}
+      </div>
+
+      ${
+        supporting.length
+          ? `
+            <section
+              class="important-section"
+            >
+
+              <div
+                class="section-heading-row"
+              >
+                <h2>
+                  Other important developments
+                </h2>
+              </div>
+
+              <div
+                class="important-grid"
+              >
+                ${supporting
+                  .map(
+                    story =>
+                      storyMarkup(
+                        story,
+                        "secondary"
+                      )
+                  )
+                  .join("")}
+              </div>
+
+            </section>
+          `
+          : ""
+      }
+
+      ${
+        recent.length
+          ? developingTimelineMarkup(
+              recent,
+              false
+            )
+          : ""
+      }
+
+    </section>
+  `;
+
+  wireStoryActions();
+  renderRail();
+}
+
+
+/* ============================================================
+   DEVELOPING TIMELINE
+============================================================ */
+
+function developingTimelineMarkup(
+  stories,
+  full = false
+) {
+  if (!stories.length) {
+    return "";
+  }
+
+  return `
+    <section
+      class="developing-timeline-section ${
+        full
+          ? "developing-full"
+          : ""
+      }"
+    >
+
+      <div
+        class="section-heading-row developing-heading"
+      >
+        <div>
+          <div
+            class="section-kicker"
+          >
+            DEVELOPING NOW
+          </div>
 
           <h2>
-            ${storyLink(cluster)}
+            ${
+              full
+                ? "Stories still moving"
+                : "What is changing"
+            }
           </h2>
-
-          ${
-            desc(cluster)
-              ? `
-                <p>
-                  ${esc(desc(cluster))}
-                </p>
-              `
-              : ''
-          }
-
-          <div class="meta">
-            ${meta(cluster)}
-            ${saveBtn(cluster)}
-          </div>
-
         </div>
 
-      </article>
-    `;
+        ${
+          !full
+            ? `
+              <button
+                class="text-button"
+                data-open-developing
+              >
+                View all →
+              </button>
+            `
+            : ""
+        }
+      </div>
+
+      <div
+        class="developing-timeline"
+      >
+
+        ${stories
+          .map(
+            story => {
+              const id =
+                encodeURIComponent(
+                  key(story)
+                );
+
+              return `
+                <article
+                  class="timeline-item"
+                >
+
+                  <div
+                    class="timeline-marker"
+                    aria-hidden="true"
+                  ></div>
+
+                  <div
+                    class="timeline-time"
+                  >
+                    ${esc(
+                      clock(
+                        stamp(story)
+                      )
+                    )}
+                  </div>
+
+                  <div
+                    class="timeline-content"
+                  >
+
+                    <div
+                      class="story-topline"
+                    >
+                      <span
+                        class="category-label"
+                      >
+                        ${esc(
+                          cat(
+                            story?.category ||
+                            "News"
+                          )
+                        )}
+                      </span>
+
+                      ${
+                        story?.is_developing
+                          ? `
+                            <span
+                              class="story-state developing-state"
+                            >
+                              DEVELOPING
+                            </span>
+                          `
+                          : `
+                            <span
+                              class="story-state"
+                            >
+                              RECENT
+                            </span>
+                          `
+                      }
+                    </div>
+
+                    <h3>
+                      ${esc(
+                        story?.title ||
+                        ""
+                      )}
+                    </h3>
+
+                    ${
+                      full &&
+                      summary(
+                        story,
+                        34
+                      )
+                        ? `
+                          <p>
+                            ${esc(
+                              summary(
+                                story,
+                                34
+                              )
+                            )}
+                          </p>
+                        `
+                        : ""
+                    }
+
+                    <div
+                      class="timeline-meta"
+                    >
+                      <span>
+                        ${esc(
+                          publisher(
+                            story
+                          )
+                        )}
+                      </span>
+
+                      <span>·</span>
+
+                      <span>
+                        ${sourceCount(
+                          story
+                        )}
+                        ${
+                          sourceCount(
+                            story
+                          ) === 1
+                            ? "source"
+                            : "sources"
+                        }
+                      </span>
+                    </div>
+
+                    ${
+                      full
+                        ? `
+                          <div
+                            class="timeline-actions"
+                          >
+                            <button
+                              class="story-action"
+                              data-source="${esc(
+                                id
+                              )}"
+                            >
+                              View sources
+                            </button>
+
+                            <a
+                              class="story-action"
+                              href="${esc(
+                                url(story)
+                              )}"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              Read →
+                            </a>
+
+                            <button
+                              class="story-action save-button ${
+                                saved(
+                                  story
+                                )
+                                  ? "saved"
+                                  : ""
+                              }"
+                              data-save="${esc(
+                                id
+                              )}"
+                            >
+                              ${
+                                saved(
+                                  story
+                                )
+                                  ? "★ Saved"
+                                  : "☆ Save"
+                              }
+                            </button>
+                          </div>
+                        `
+                        : ""
+                    }
+
+                  </div>
+
+                </article>
+              `;
+            }
+          )
+          .join("")}
+
+      </div>
+
+    </section>
+  `;
+}
+
+
+/* ============================================================
+   SINCE LAST CHECK
+============================================================ */
+
+function sinceStories() {
+  const previous =
+    date(
+      state.previousVisit
+    );
+
+  if (!previous) {
+    return [];
   }
 
+  return sortStories(
+    state.clusters.filter(
+      story => {
+        const published =
+          date(
+            stamp(story)
+          );
 
-  /* =========================================================
-     SECONDARY STORY
-     ========================================================= */
+        return (
+          published &&
+          published > previous
+        );
+      }
+    )
+  );
+}
 
-  function secondary(cluster) {
-    return `
-      <article class="secondary-card">
 
-        <div class="secondary-copy">
+function renderSince() {
+  state.currentView =
+    "since";
 
-          ${storyLabel(cluster)}
+  state.currentCategory =
+    null;
 
-          <h3>
-            ${storyLink(cluster)}
-          </h3>
+  setActive({
+    view: "since"
+  });
 
-          <div class="meta">
-            ${meta(cluster)}
-            ${saveBtn(cluster)}
-          </div>
+  setHeader(
+    "SINCE LAST CHECK",
+    "What changed while you were away",
+    "New developments published since your previous visit."
+  );
 
-        </div>
+  showSince(false);
 
-        ${visual(cluster, true)}
+  const stories =
+    sinceStories();
 
-      </article>
-    `;
+  if (!state.previousVisit) {
+    empty(
+      "Your catch-up starts next time",
+      "Daily Intelligence has saved this visit. On your next return, this view will show what changed while you were away."
+    );
+
+    renderRail();
+
+    return;
   }
 
+  if (!stories.length) {
+    empty(
+      "You're caught up",
+      "No new developments have been published since your previous visit."
+    );
 
-  /* =========================================================
-     SIGNAL STORY
-     ========================================================= */
+    renderRail();
 
-  function signal(cluster) {
-    return `
-      <article class="signal-row">
-
-        <div>
-
-          ${storyLabel(cluster)}
-
-          <h3>
-            ${storyLink(cluster)}
-          </h3>
-
-          ${
-            desc(cluster)
-              ? `
-                <p>
-                  ${esc(desc(cluster))}
-                </p>
-              `
-              : ''
-          }
-
-          <div class="meta">
-            ${meta(cluster)}
-          </div>
-
-        </div>
-
-        ${saveBtn(cluster)}
-
-      </article>
-    `;
+    return;
   }
 
+  renderStream(
+    stories.slice(
+      0,
+      30
+    ),
+    {
+      title:
+        `${stories.length} new developments`,
+      description:
+        "Ordered by importance and recency."
+    }
+  );
 
-  /* =========================================================
-     HEADER
-     ========================================================= */
+  renderRail();
+}
 
-  function setHeader(
+
+/* ============================================================
+   DEVELOPING VIEW
+============================================================ */
+
+function renderDeveloping() {
+  state.currentView =
+    "developing";
+
+  state.currentCategory =
+    null;
+
+  setActive({
+    view: "developing"
+  });
+
+  setHeader(
+    "DEVELOPING",
+    "Stories still moving",
+    "Live and recently evolving developments worth keeping an eye on."
+  );
+
+  showSince(false);
+
+  let stories =
+    sortStories(
+      state.clusters.filter(
+        story =>
+          story?.is_developing
+      )
+    );
+
+  /*
+   * Until the backend begins setting more explicit
+   * is_developing flags, this view uses recent,
+   * high-importance stories as a clearly labelled
+   * recent-signal fallback.
+   */
+  if (!stories.length) {
+    stories =
+      developingStories()
+        .slice(0, 15);
+  }
+
+  if (!stories.length) {
+    empty(
+      "Nothing is developing right now",
+      "No high-signal developing stories are available at the moment."
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  els.contentView.innerHTML =
+    developingTimelineMarkup(
+      stories,
+      true
+    );
+
+  wireStoryActions();
+  renderRail();
+}
+
+
+/* ============================================================
+   GENERIC CATEGORY VIEW
+============================================================ */
+
+function showCategory(
+  category
+) {
+  state.currentView =
+    "category";
+
+  state.currentCategory =
+    category;
+
+  setActive({
+    category
+  });
+
+  const stories =
+    categoryStories(
+      category
+    );
+
+  const copy = {
+    "India": [
+      "INDIA",
+      "India",
+      "The national developments with the strongest policy, economic and institutional signal."
+    ],
+
+    "Indian Politics": [
+      "INDIAN POLITICS",
+      "Indian Politics",
+      "Substantive political and governance developments, without the daily theatre."
+    ],
+
+    "Macro Economics": [
+      "ECONOMY & POLICY",
+      "Economy & Policy",
+      "Inflation, rates, fiscal policy, regulation and the forces shaping India's economy."
+    ],
+
+    "Business & Micro": [
+      "BUSINESS",
+      "Business",
+      "Companies, sectors and commercial developments that matter beyond a single headline."
+    ],
+
+    "Companies & Earnings": [
+      "COMPANIES",
+      "Companies & Earnings",
+      "Material earnings, acquisitions, capital allocation and corporate developments."
+    ],
+
+    "Indian Markets": [
+      "MARKETS",
+      "Indian Markets",
+      "The signals moving Indian equities, capital flows, rates and investor positioning."
+    ],
+
+    "Global → India": [
+      "GLOBAL → INDIA",
+      "Global → India",
+      "Global rates, commodities, trade and geopolitical forces transmitting into India."
+    ],
+
+    "World": [
+      "WORLD",
+      "World",
+      "The most consequential international developments."
+    ],
+
+    "Geopolitics": [
+      "GEOPOLITICS",
+      "Geopolitics",
+      "Conflict, diplomacy, sanctions and strategic shifts with wider consequences."
+    ],
+
+    "World Politics": [
+      "WORLD POLITICS",
+      "World Politics",
+      "Political and institutional developments shaping major economies."
+    ],
+
+    "AI": [
+      "ARTIFICIAL INTELLIGENCE",
+      "Artificial Intelligence",
+      "Models, products, research, policy and the companies shaping the AI landscape."
+    ],
+
+    "Technology": [
+      "TECHNOLOGY",
+      "Technology",
+      "Important technology developments beyond the daily product-launch cycle."
+    ],
+
+    "Science & Climate": [
+      "SCIENCE & CLIMATE",
+      "Science & Climate",
+      "Research, climate and scientific developments with lasting implications."
+    ],
+
+    "The Ken": [
+      "THE KEN",
+      "The Ken",
+      "Recent intelligence from The Ken."
+    ]
+  };
+
+  const [
     eyebrow,
     title,
     description
-  ) {
-    const eyebrowEl =
-      $('#eyebrow') ||
-      $('#todayDate') ||
-      $('.eyebrow');
-
-    const titleEl =
-      $('#pageTitle') ||
-      $('.brief-header h1');
-
-    const descriptionEl =
-      $('#pageDescription') ||
-      $('.page-description');
-
-    if (eyebrowEl) {
-      eyebrowEl.textContent =
-        eyebrow || '';
-    }
-
-    if (titleEl) {
-      titleEl.textContent =
-        title || '';
-    }
-
-    if (descriptionEl) {
-      descriptionEl.textContent =
-        description || '';
-    }
-  }
-
-
-  /* =========================================================
-     ACTIVE NAV
-     ========================================================= */
-
-  function active(view, cat) {
-    $$('[data-view], [data-category]')
-      .forEach(element => {
-        element.classList.toggle(
-          'active',
-          cat
-            ? element.dataset.category === cat
-            : element.dataset.view === view
-        );
-      });
-  }
-
-
-  /* =========================================================
-     SINCE LAST CHECK
-     ========================================================= */
-
-  function visibleSincePanel() {
-    return (
-      $('#sinceLastPanel') ||
-      $('#sincePanel')
-    );
-  }
-
-  function setSinceVisible(show) {
-    const panel = visibleSincePanel();
-
-    if (panel) {
-      panel.hidden = !show;
-    }
-  }
-
-  function sincePanel() {
-    const cut =
-      S.lastVisit
-        ? new Date(S.lastVisit).getTime()
-        : Date.now() - 86400000;
-
-    const number =
-      S.clusters.filter(cluster => {
-        const published =
-          new Date(date(cluster)).getTime();
-
-        return (
-          Number.isFinite(published) &&
-          published > cut
-        );
-      }).length;
-
-    const summary =
-      $('#sinceSummary');
-
-    if (summary) {
-      summary.textContent =
-        `${number} new developments since your last check`;
-    }
-
-    const railSummary =
-      $('#changedSummary');
-
-    if (railSummary) {
-      railSummary.textContent =
-        number
-          ? `${number} developments have appeared since your previous visit.`
-          : 'No major new developments since your previous visit.';
-    }
-  }
-
-
-  /* =========================================================
-     RIGHT RAIL
-     ========================================================= */
-
-  function rail() {
-    const developing =
-      S.clusters.filter(cluster =>
-        cluster.is_developing === true ||
-        String(cluster.is_developing) === 'true'
-      ).length;
-
-    const articles =
-      Number(S.data.article_count) ||
-      S.clusters.reduce(
-        (total, cluster) =>
-          total +
-          Math.max(
-            1,
-            A(cluster.articles).length
-          ),
-        0
-      );
-
-    const events =
-      Number(S.data.cluster_count) ||
-      S.clusters.length;
-
-    const railEl =
-      $('#contextRail');
-
-    if (!railEl) {
-      return;
-    }
-
-    railEl.innerHTML = `
-      <section class="rail-card">
-
-        <h3>
-          Today at a glance
-        </h3>
-
-        <div class="rail-stat">
-          <b>5</b>
-          <span>
-            in today's brief
-          </span>
-        </div>
-
-        <div class="rail-stat">
-          <b>${developing}</b>
-          <span>
-            developing stories
-          </span>
-        </div>
-
-        <div class="rail-stat">
-          <b>${articles}</b>
-          <span>
-            articles scanned
-          </span>
-        </div>
-
-        <div class="rail-stat">
-          <b>${events}</b>
-          <span>
-            events clustered
-          </span>
-        </div>
-
-      </section>
-
-
-      <section class="rail-card explore">
-
-        <h3>
-          Explore by topic →
-        </h3>
-
-        <button
-          data-category="India"
-          type="button"
-        >
-          India
-        </button>
-
-        <button
-          data-view="markets"
-          type="button"
-        >
-          Markets
-        </button>
-
-        <button
-          data-category="AI"
-          type="button"
-        >
-          AI
-        </button>
-
-        <button
-          data-category="Macro Economics"
-          type="button"
-        >
-          Economy
-        </button>
-
-        <button
-          data-category="Geopolitics"
-          type="button"
-        >
-          Geopolitics
-        </button>
-
-        <button
-          data-category="Technology"
-          type="button"
-        >
-          Technology
-        </button>
-
-        <button
-          data-category="Science & Climate"
-          type="button"
-        >
-          Climate
-        </button>
-
-      </section>
-
-
-      <div class="rail-note">
-        ❧
-
-        <span>
-          Less noise.<br>
-          A more informed you.
-        </span>
-      </div>
-    `;
-  }
-
-
-  /* =========================================================
-     THE BRIEF
-     ========================================================= */
-
-  function renderBrief() {
-    S.view = 'brief';
-    S.category = null;
-
-    active('brief');
-
-    /*
-     * MOCKUP SPEC:
-     * exactly five headline developments.
-     */
-    const brief =
-      S.brief.slice(0, 5);
-
-    setHeader(
-      "TODAY'S BRIEF",
-      `${brief.length} developments worth your attention`,
-      "A focused view on what's important in India, the world and beyond."
-    );
-
-    setSinceVisible(true);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = false;
-    }
-
-    if (!brief.length) {
-      $('#contentView').innerHTML = `
-        <div class="empty">
-
-          <h2>
-            No brief yet
-          </h2>
-
-          <p>
-            No stories met the current signal threshold.
-          </p>
-
-        </div>
-      `;
-
-      rail();
-      return;
-    }
-
-    /*
-     * MOCKUP COMPOSITION
-     *
-     * 1 hero
-     * +
-     * four secondary cards in a 2 × 2 grid.
-     *
-     * No additional signal stream on the Brief homepage.
-     */
-
-    $('#contentView').innerHTML = `
-      <div class="brief-editorial">
-
-        ${lead(brief[0])}
-
-        ${
-          brief.length > 1
-            ? `
-              <h2 class="subsection-title">
-                Other important developments
-              </h2>
-
-              <div class="secondary-grid">
-                ${
-                  brief
-                    .slice(1, 5)
-                    .map(secondary)
-                    .join('')
-                }
-              </div>
-            `
-            : ''
-        }
-
-      </div>
-    `;
-
-    rail();
-  }
-
-
-  /* =========================================================
-     CATEGORY
-     ========================================================= */
-
-  function categoryItems(cat) {
-    const display =
-      catMap[cat] || cat;
-
-    return S.clusters
-      .filter(cluster =>
-        category(cluster) === cat ||
-        displayCat(cluster) === display
-      )
-      .sort(
-        (a, b) =>
-          score(b) - score(a)
-      );
-  }
-
-  function renderCategory(cat) {
-    S.view = 'category';
-    S.category = cat;
-
-    active(null, cat);
-
-    const display =
-      catMap[cat] || cat;
-
-    const items =
-      categoryItems(cat);
-
-    setHeader(
-      `${display.toUpperCase()} / TODAY / ${items.length} DEVELOPMENTS`,
-      display,
-      `Key ${display.toLowerCase()} developments that matter.`
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = false;
-    }
-
-    if (!items.length) {
-      $('#contentView').innerHTML = `
-        <div class="empty category-empty">
-
-          <div class="empty-icon">
-            ⌂
-          </div>
-
-          <h2>
-            No significant developments<br>
-            since your last briefing.
-          </h2>
-
-          <p>
-            We're continuously scanning trusted sources.<br>
-            If something important happens, it will appear here.
-          </p>
-
-          <button
-            data-view="brief"
-            type="button"
-          >
-            Back to The Brief
-          </button>
-
-        </div>
-      `;
-
-      rail();
-      return;
-    }
-
-    $('#contentView').innerHTML = `
-      <div class="category-editorial">
-
-        ${lead(items[0])}
-
-        ${
-          items.length > 1
-            ? `
-              <div class="secondary-grid category-secondary">
-
-                ${
-                  items
-                    .slice(1, 3)
-                    .map(secondary)
-                    .join('')
-                }
-
-              </div>
-            `
-            : ''
-        }
-
-        ${
-          items.length > 3
-            ? `
-              <div class="signals-head">
-                Signal Stream
-              </div>
-
-              <div class="signal-list">
-
-                ${
-                  items
-                    .slice(3, 30)
-                    .map(signal)
-                    .join('')
-                }
-
-              </div>
-            `
-            : ''
-        }
-
-      </div>
-    `;
-
-    rail();
-  }
-
-
-  /* =========================================================
-     MARKET DETECTION
-     ========================================================= */
-
-  function isMarket(cluster) {
-    const text =
-      `
-        ${category(cluster)}
-        ${cluster.title || ''}
-        ${desc(cluster)}
-        ${A(cluster.market_channels).join(' ')}
-      `.toLowerCase();
-
-    return (
-      /market|nifty|sensex|sebi|rbi|ipo|stock|equity|mutual fund|fii|dii|rupee|bond|yield|crude|opec|fed|dollar|bank/.test(text) ||
-      Boolean(cluster.market_impact)
-    );
-  }
-
-
-  /* =========================================================
-     MARKETS
-     ========================================================= */
-
-  function renderMarkets() {
-    S.view = 'markets';
-    S.category = null;
-
-    active('markets');
-
-    setHeader(
-      'MARKETS',
-      'Markets',
-      'Key developments moving Indian markets.'
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = true;
-    }
-
-    const items =
-      S.clusters
-        .filter(isMarket)
-        .sort(
-          (a, b) =>
-            score(b) - score(a)
-        );
-
-    const india =
-      items.filter(cluster =>
-        !/fed|china|opec|dollar|treasury|global|united states|us /.test(
-          `${cluster.title || ''} ${desc(cluster)}`
-            .toLowerCase()
-        )
-      );
-
-    const global =
-      items.filter(cluster =>
-        !india.includes(cluster)
-      );
-
-    const ipo =
-      items.filter(cluster =>
-        /\bipo\b|initial public offering/.test(
-          `${cluster.title || ''} ${desc(cluster)}`
-            .toLowerCase()
-        )
-      );
-
-    const companies =
-      items.filter(cluster =>
-        /company|companies|earnings|acquisition|merger|buyback|order|stock|shares/.test(
-          `${cluster.title || ''} ${desc(cluster)}`
-            .toLowerCase()
-        )
-      );
-
-    const funds =
-      items.filter(cluster =>
-        /mutual fund|amfi|\bsip\b/.test(
-          `${cluster.title || ''} ${desc(cluster)}`
-            .toLowerCase()
-        )
-      );
-
-    $('#contentView').innerHTML = `
-      <div class="markets-page">
-
-        <nav class="market-tabs">
-
-          <b>Overview</b>
-
-          <span>
-            India Today
-          </span>
-
-          <span>
-            Global → India
-          </span>
-
-          <span>
-            IPOs
-          </span>
-
-          <span>
-            Stocks & Companies
-          </span>
-
-          <span>
-            Mutual Funds
-          </span>
-
-        </nav>
-
-
-        ${
-          items[0]
-            ? lead(items[0])
-            : `
-              <div class="empty">
-                <h2>
-                  No major market developments.
-                </h2>
-              </div>
-            `
-        }
-
-
-        <div class="market-columns">
-
-          <section>
-
-            <h2>
-              India Today
-            </h2>
-
-            ${
-              india
-                .slice(1, 5)
-                .map(cluster => `
-                  <div class="market-line">
-
-                    <h3>
-                      ${storyLink(cluster)}
-                    </h3>
-
-                    <div class="meta">
-                      ${meta(cluster)}
-                    </div>
-
-                  </div>
-                `)
-                .join('')
-            }
-
-          </section>
-
-
-          <section>
-
-            <h2>
-              Global → India
-            </h2>
-
-            ${
-              global
-                .slice(0, 4)
-                .map(cluster => `
-                  <div class="market-line">
-
-                    <h3>
-                      ${storyLink(cluster)}
-                    </h3>
-
-                    <div class="meta">
-                      ${meta(cluster)}
-                    </div>
-
-                  </div>
-                `)
-                .join('')
-            }
-
-          </section>
-
-        </div>
-
-
-        <div class="market-bottom">
-
-          <section>
-
-            <h2>
-              IPOs
-            </h2>
-
-            ${
-              ipo.length
-                ? ipo
-                    .slice(0, 3)
-                    .map(cluster => `
-                      <div class="mini-line">
-                        ${storyLink(cluster)}
-                      </div>
-                    `)
-                    .join('')
-                : `
-                  <p>
-                    No high-signal IPO developments.
-                  </p>
-                `
-            }
-
-          </section>
-
-
-          <section>
-
-            <h2>
-              Stocks & Companies
-            </h2>
-
-            ${
-              companies.length
-                ? companies
-                    .slice(0, 3)
-                    .map(cluster => `
-                      <div class="mini-line">
-                        ${storyLink(cluster)}
-                      </div>
-                    `)
-                    .join('')
-                : `
-                  <p>
-                    No high-signal company developments.
-                  </p>
-                `
-            }
-
-          </section>
-
-
-          <section>
-
-            <h2>
-              Mutual Funds
-            </h2>
-
-            ${
-              funds.length
-                ? funds
-                    .slice(0, 3)
-                    .map(cluster => `
-                      <div class="mini-line">
-                        ${storyLink(cluster)}
-                      </div>
-                    `)
-                    .join('')
-                : `
-                  <p>
-                    No high-signal mutual fund developments.
-                  </p>
-                `
-            }
-
-          </section>
-
-        </div>
-
-      </div>
-    `;
-  }
-
-
-  /* =========================================================
-     DEVELOPING
-     ========================================================= */
-
-  function renderDeveloping() {
-    S.view = 'developing';
-
-    active('developing');
-
-    setHeader(
-      'LIVE',
-      'Developing',
-      'Events that are still moving.'
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = true;
-    }
-
-    const items =
-      S.clusters
-        .filter(cluster =>
-          cluster.is_developing === true ||
-          String(cluster.is_developing) === 'true'
-        )
-        .sort(
-          (a, b) =>
-            new Date(date(b)) -
-            new Date(date(a))
-        );
-
-    $('#contentView').innerHTML = `
-      <div class="developing-stream">
-
-        ${
-          items.length
-            ? items
-                .slice(0, 30)
-                .map(cluster => `
-                  <article>
-
-                    <time>
-                      ${ago(date(cluster))}
-                    </time>
-
-                    <i></i>
-
-                    <div>
-
-                      <h3>
-                        ${storyLink(cluster)}
-                      </h3>
-
-                      <span>
-                        Developing
-                      </span>
-
-                    </div>
-
-                  </article>
-                `)
-                .join('')
-            : `
-              <div class="empty">
-
-                <h2>
-                  No developing stories right now.
-                </h2>
-
-              </div>
-            `
-        }
-
-      </div>
-    `;
-  }
-
-
-  /* =========================================================
-     SINCE LAST CHECK VIEW
-     ========================================================= */
-
-  function renderSince() {
-    S.view = 'since';
-
-    active('since');
-
-    setHeader(
-      'TODAY',
-      'Since Last Check',
-      'What changed since your previous visit.'
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = false;
-    }
-
-    const cut =
-      S.lastVisit
-        ? new Date(S.lastVisit).getTime()
-        : Date.now() - 86400000;
-
-    const items =
-      S.clusters
-        .filter(cluster =>
-          new Date(date(cluster)).getTime() > cut
-        )
-        .sort(
-          (a, b) =>
-            new Date(date(b)) -
-            new Date(date(a))
-        );
-
-    $('#contentView').innerHTML = `
-      <div class="signal-list">
-
-        ${
-          items
-            .slice(0, 40)
-            .map(signal)
-            .join('')
-        }
-
-      </div>
-    `;
-
-    rail();
-  }
-
-
-  /* =========================================================
-     SAVED
-     ========================================================= */
-
-  function renderSaved() {
-    S.view = 'saved';
-
-    active('saved');
-
-    setHeader(
-      'LIBRARY',
-      'Saved',
-      'Stories you bookmarked.'
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = true;
-    }
-
-    const items =
-      S.clusters.filter(cluster =>
-        S.saved.has(key(cluster))
-      );
-
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="signal-list">
-
-            ${
-              items
-                .map(signal)
-                .join('')
-            }
-
-          </div>
-        `
-        : `
-          <div class="empty">
-
-            <h2>
-              Nothing saved yet.
-            </h2>
-
-            <p>
-              Bookmark a story to keep it here.
-            </p>
-
-          </div>
-        `;
-  }
-
-
-  /* =========================================================
-     EXPLORE
-     ========================================================= */
-
-  function renderExplore() {
-    S.view = 'explore';
-
-    active('explore');
-
-    setHeader(
-      'EXPLORE',
-      'Explore',
-      'Browse intelligence by topic.'
-    );
-
-    setSinceVisible(false);
-
-    const contextRail =
-      $('#contextRail');
-
-    if (contextRail) {
-      contextRail.hidden = true;
-    }
-
-    const categories = [
-      'India',
-      'Indian Politics',
-      'Macro Economics',
-      'Business & Micro',
-      'Markets',
-      'World',
-      'Geopolitics',
-      'World Politics',
-      'AI',
-      'Technology',
-      'Science & Climate'
+  ] =
+    copy[category] || [
+      String(
+        category
+      ).toUpperCase(),
+      cat(category),
+      "Recent developments in this topic."
     ];
 
-    $('#contentView').innerHTML = `
-      <div class="explore-page">
+  setHeader(
+    eyebrow,
+    title,
+    description
+  );
 
-        ${
-          categories
-            .map(item => `
-              <button
-                ${
-                  item === 'Markets'
-                    ? 'data-view="markets"'
-                    : `data-category="${esc(item)}"`
-                }
-                type="button"
-              >
+  showSince(false);
 
-                ${esc(catMap[item] || item)}
-
-                <span>
-                  ›
-                </span>
-
-              </button>
-            `)
-            .join('')
-        }
-
-      </div>
-    `;
-  }
-
-
-  /* =========================================================
-     SOURCES
-     ========================================================= */
-
-  function renderSources() {
-    S.view = 'sources';
-
-    active('sources');
-
-    setHeader(
-      'COVERAGE',
-      'Sources',
-      'Publishers represented in the current intelligence set.'
+  if (!stories.length) {
+    empty(
+      `No strong ${cat(
+        category
+      )} signal right now`,
+      "Daily Intelligence only shows developments that clear the relevance threshold. This section will fill when stronger stories arrive."
     );
 
-    setSinceVisible(false);
+    renderRail();
 
-    const contextRail =
-      $('#contextRail');
+    return;
+  }
 
-    if (contextRail) {
-      contextRail.hidden = true;
+  renderStream(
+    stories.slice(
+      0,
+      35
+    ),
+    {
+      title:
+        `${stories.length} developments`,
+      description:
+        "Ranked by importance, confirmation and recency."
     }
+  );
 
-    const map =
-      new Map();
+  renderRail();
+}
 
-    S.clusters.forEach(cluster => {
-      const name =
-        source(cluster);
 
-      map.set(
-        name,
-        (map.get(name) || 0) + 1
-      );
-    });
+/* ============================================================
+   STORY STREAM
+============================================================ */
 
-    $('#contentView').innerHTML = `
-      <div class="source-page">
+function renderStream(
+  stories,
+  {
+    title = "",
+    description = ""
+  } = {}
+) {
+  if (!els.contentView) {
+    return;
+  }
 
-        ${
-          [...map]
-            .sort(
-              (a, b) =>
-                b[1] - a[1]
-            )
-            .map(([name, number]) => `
+  const lead =
+    stories[0];
+
+  const rest =
+    stories.slice(1);
+
+  els.contentView.innerHTML = `
+    <section
+      class="stream-layout"
+    >
+
+      ${
+        title
+          ? `
+            <div
+              class="stream-heading"
+            >
               <div>
+                <h2>
+                  ${esc(title)}
+                </h2>
 
-                <b>
-                  ${esc(name)}
-                </b>
-
-                <span>
-                  ${number} items
-                </span>
-
+                ${
+                  description
+                    ? `
+                      <p>
+                        ${esc(
+                          description
+                        )}
+                      </p>
+                    `
+                    : ""
+                }
               </div>
-            `)
-            .join('')
-        }
+            </div>
+          `
+          : ""
+      }
+
+      ${
+        lead
+          ? `
+            <div
+              class="stream-lead"
+            >
+              ${storyMarkup(
+                lead,
+                "lead"
+              )}
+            </div>
+          `
+          : ""
+      }
+
+      ${
+        rest.length
+          ? `
+            <div
+              class="story-stream"
+            >
+              ${rest
+                .map(
+                  story =>
+                    storyMarkup(
+                      story,
+                      "normal"
+                    )
+                )
+                .join("")}
+            </div>
+          `
+          : ""
+      }
+
+    </section>
+  `;
+
+  wireStoryActions();
+}
+
+
+/* ============================================================
+   MARKETS
+============================================================ */
+
+function marketStories() {
+  const categories =
+    new Set([
+      "Indian Markets",
+      "Global → India",
+      "Companies & Earnings",
+      "IPO",
+      "Mutual Funds",
+      "Macro Economics"
+    ]);
+
+  return sortStories(
+    state.clusters.filter(
+      story =>
+        categories.has(
+          story?.category
+        )
+    )
+  );
+}
+
+
+function marketSection(
+  title,
+  stories,
+  limit = 6
+) {
+  const items =
+    stories.slice(
+      0,
+      limit
+    );
+
+  if (!items.length) {
+    return "";
+  }
+
+  return `
+    <section
+      class="market-section"
+    >
+
+      <div
+        class="section-heading-row"
+      >
+        <h2>
+          ${esc(title)}
+        </h2>
+      </div>
+
+      <div
+        class="market-story-list"
+      >
+        ${items
+          .map(
+            story =>
+              storyMarkup(
+                story,
+                "normal"
+              )
+          )
+          .join("")}
+      </div>
+
+    </section>
+  `;
+}
+
+
+function renderMarkets() {
+  state.currentView =
+    "markets";
+
+  state.currentCategory =
+    null;
+
+  setActive({
+    view: "markets"
+  });
+
+  setHeader(
+    "MARKETS",
+    "Markets",
+    "Indian equities, companies, IPOs, funds and the global forces transmitting into India."
+  );
+
+  showSince(false);
+
+  const all =
+    marketStories();
+
+  const indian =
+    all.filter(
+      story =>
+        story?.category ===
+        "Indian Markets"
+    );
+
+  const globalIndia =
+    all.filter(
+      story =>
+        story?.category ===
+        "Global → India"
+    );
+
+  const companies =
+    all.filter(
+      story =>
+        story?.category ===
+        "Companies & Earnings"
+    );
+
+  const macro =
+    all.filter(
+      story =>
+        story?.category ===
+        "Macro Economics"
+    );
+
+  const ipo =
+    all.filter(
+      story =>
+        story?.category ===
+        "IPO"
+    );
+
+  const funds =
+    all.filter(
+      story =>
+        story?.category ===
+        "Mutual Funds"
+    );
+
+  if (!all.length) {
+    empty(
+      "Markets are quiet",
+      "No market developments currently clear the intelligence threshold."
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  const lead =
+    all[0];
+
+  els.contentView.innerHTML = `
+    <section
+      class="markets-layout"
+    >
+
+      ${
+        lead
+          ? `
+            <div
+              class="markets-lead"
+            >
+              ${storyMarkup(
+                lead,
+                "lead"
+              )}
+            </div>
+          `
+          : ""
+      }
+
+      <div
+        class="market-columns"
+      >
+
+        ${marketSection(
+          "Indian markets",
+          indian,
+          8
+        )}
+
+        ${marketSection(
+          "Global → India",
+          globalIndia,
+          8
+        )}
 
       </div>
-    `;
+
+      ${marketSection(
+        "Companies & earnings",
+        companies,
+        8
+      )}
+
+      ${marketSection(
+        "Economy & policy",
+        macro,
+        6
+      )}
+
+      ${marketSection(
+        "IPO intelligence",
+        ipo,
+        8
+      )}
+
+      ${marketSection(
+        "Mutual funds",
+        funds,
+        8
+      )}
+
+    </section>
+  `;
+
+  wireStoryActions();
+  renderRail();
+}
+
+
+/* ============================================================
+   SAVED
+============================================================ */
+
+function renderSaved() {
+  state.currentView =
+    "saved";
+
+  state.currentCategory =
+    null;
+
+  setActive({
+    view: "saved"
+  });
+
+  setHeader(
+    "SAVED",
+    "Your saved intelligence",
+    "Stories you bookmarked for later."
+  );
+
+  showSince(false);
+
+  const stories =
+    sortStories(
+      state.clusters.filter(
+        story =>
+          saved(story)
+      )
+    );
+
+  if (!stories.length) {
+    empty(
+      "Nothing saved yet",
+      "Use the Save button on any story to keep it here."
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  renderStream(
+    stories,
+    {
+      title:
+        `${stories.length} saved ${
+          stories.length === 1
+            ? "story"
+            : "stories"
+        }`,
+      description:
+        "Your personal reading list."
+    }
+  );
+
+  renderRail();
+}
+
+
+/* ============================================================
+   EXPLORE
+============================================================ */
+
+function renderExplore() {
+  state.currentView =
+    "explore";
+
+  state.currentCategory =
+    null;
+
+  setActive({
+    view: "explore"
+  });
+
+  setHeader(
+    "EXPLORE",
+    "Explore intelligence",
+    "Move through the topics Daily Intelligence is tracking."
+  );
+
+  showSince(false);
+
+  const cards =
+    EXPLORE.map(
+      category => {
+        const stories =
+          categoryStories(
+            category
+          );
+
+        const lead =
+          stories[0];
+
+        return `
+          <button
+            class="explore-card"
+            data-explore="${esc(
+              category
+            )}"
+          >
+
+            <div
+              class="explore-card-top"
+            >
+              <span>
+                ${esc(
+                  cat(category)
+                )}
+              </span>
+
+              <strong>
+                ${stories.length}
+              </strong>
+            </div>
+
+            ${
+              lead
+                ? `
+                  <h3>
+                    ${esc(
+                      lead.title
+                    )}
+                  </h3>
+
+                  <p>
+                    ${esc(
+                      summary(
+                        lead,
+                        20
+                      )
+                    )}
+                  </p>
+                `
+                : `
+                  <h3>
+                    No major signal
+                  </h3>
+
+                  <p>
+                    Nothing currently clears the relevance threshold.
+                  </p>
+                `
+            }
+
+            <span
+              class="explore-arrow"
+            >
+              Explore →
+            </span>
+
+          </button>
+        `;
+      }
+    ).join("");
+
+  els.contentView.innerHTML = `
+    <section
+      class="explore-layout"
+    >
+
+      <div
+        class="explore-grid"
+      >
+        ${cards}
+      </div>
+
+    </section>
+  `;
+
+  document
+    .querySelectorAll(
+      "[data-explore]"
+    )
+    .forEach(
+      button => {
+        button.onclick =
+          () =>
+            showCategory(
+              button.dataset
+                .explore
+            );
+      }
+    );
+
+  renderRail();
+}
+
+
+/* ============================================================
+   SEARCH
+============================================================ */
+
+function searchStories(
+  query
+) {
+  const q =
+    norm(query);
+
+  if (!q) {
+    return [];
+  }
+
+  return sortStories(
+    state.clusters.filter(
+      story => {
+        const haystack =
+          norm(
+            [
+              story?.title,
+              story?.description,
+              story?.brief,
+              story?.category,
+              publisher(story),
+              ...(story?.sources || [])
+            ]
+              .filter(Boolean)
+              .join(" ")
+          );
+
+        return haystack.includes(
+          q
+        );
+      }
+    )
+  );
+}
+
+
+function renderSearchResults(
+  query
+) {
+  state.currentView =
+    "search";
+
+  state.currentCategory =
+    null;
+
+  setActive({});
+
+  const stories =
+    searchStories(
+      query
+    );
+
+  setHeader(
+    "SEARCH",
+    query
+      ? `Results for “${query}”`
+      : "Search intelligence",
+    query
+      ? `${stories.length} matching developments`
+      : "Search across today's clustered intelligence."
+  );
+
+  showSince(false);
+
+  if (!query) {
+    empty(
+      "Search Daily Intelligence",
+      "Type a company, policy, country, technology or topic into the search field."
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  if (!stories.length) {
+    empty(
+      "No matching intelligence",
+      `Nothing in the current intelligence set matches “${query}”.`
+    );
+
+    renderRail();
+
+    return;
+  }
+
+  renderStream(
+    stories.slice(
+      0,
+      40
+    ),
+    {
+      title:
+        `${stories.length} matches`,
+      description:
+        "Search results from the current intelligence set."
+    }
+  );
+
+  renderRail();
+}
+
+
+/* ============================================================
+   SOURCE SHEET
+============================================================ */
+
+function openSources(
+  story
+) {
+  if (!els.sourceSheet) {
+    return;
+  }
+
+  const articles =
+    Array.isArray(
+      story?.articles
+    ) &&
+    story.articles.length
+      ? story.articles
+      : [
+          story?.primary
+        ].filter(Boolean);
+
+  els.sheetTitle.textContent =
+    story?.title ||
+    "Sources";
+
+  els.sheetSources.innerHTML =
+    articles
+      .map(
+        article => `
+          <a
+            class="source-sheet-item"
+            href="${esc(
+              article?.url ||
+              "#"
+            )}"
+            target="_blank"
+            rel="noopener"
+          >
+
+            <div>
+              <strong>
+                ${esc(
+                  article?.source ||
+                  "Source"
+                )}
+              </strong>
+
+              <span>
+                ${esc(
+                  ago(
+                    article
+                      ?.published_at
+                  )
+                )}
+              </span>
+            </div>
+
+            <p>
+              ${esc(
+                article?.title ||
+                story?.title ||
+                ""
+              )}
+            </p>
+
+            <span
+              class="source-open"
+            >
+              Open →
+            </span>
+
+          </a>
+        `
+      )
+      .join("");
+
+  els.sourceSheet.classList.add(
+    "open"
+  );
+
+  els.sourceSheet.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+}
+
+
+function closeSources() {
+  els.sourceSheet
+    ?.classList
+    .remove(
+      "open"
+    );
+
+  els.sourceSheet
+    ?.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+}
+
+
+/* ============================================================
+   SEARCH PANEL
+============================================================ */
+
+function openSearch() {
+  els.searchPanel
+    ?.classList
+    .remove(
+      "hidden"
+    );
+
+  setTimeout(
+    () =>
+      els.searchInput
+        ?.focus(),
+    30
+  );
+}
+
+
+function closeSearch() {
+  els.searchPanel
+    ?.classList
+    .add(
+      "hidden"
+    );
+}
+
+
+/* ============================================================
+   SIDEBAR / MOBILE MENU
+============================================================ */
+
+function openSidebar() {
+  /*
+   * Desktop sidebar is fixed.
+   * On mobile CSS will hide it completely,
+   * leaving the fixed bottom navigation as
+   * the sole primary navigation system.
+   */
+  document.body.classList.add(
+    "sidebar-open"
+  );
+
+  els.menuOverlay
+    ?.setAttribute(
+      "aria-hidden",
+      "false"
+    );
+}
+
+
+function closeSidebar() {
+  document.body.classList.remove(
+    "sidebar-open"
+  );
+
+  els.menuOverlay
+    ?.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+}
+
+
+/* ============================================================
+   THEME
+============================================================ */
+
+function applyTheme(
+  theme
+) {
+  document.documentElement.dataset.theme =
+    theme;
+
+  localStorage.setItem(
+    "di_theme",
+    theme
+  );
+}
+
+
+function toggleTheme() {
+  const current =
+    document.documentElement
+      .dataset.theme ||
+    "light";
+
+  applyTheme(
+    current === "dark"
+      ? "light"
+      : "dark"
+  );
+}
+
+
+/* ============================================================
+   CURRENT VIEW
+============================================================ */
+
+function renderCurrent() {
+  if (
+    state.currentView ===
+    "brief"
+  ) {
+    renderBrief();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "since"
+  ) {
+    renderSince();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "developing"
+  ) {
+    renderDeveloping();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "markets"
+  ) {
+    renderMarkets();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "saved"
+  ) {
+    renderSaved();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "explore"
+  ) {
+    renderExplore();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "category" &&
+    state.currentCategory
+  ) {
+    showCategory(
+      state.currentCategory
+    );
+    return;
+  }
+
+  renderBrief();
+}
+/* ============================================================
+   NAVIGATION BINDINGS
+============================================================ */
+
+function bindNavigation() {
+  document
+    .querySelectorAll(
+      "[data-view]"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          () => {
+            const view =
+              button.dataset.view;
+
+            closeSidebar();
+
+            if (
+              view === "brief"
+            ) {
+              renderBrief();
+              return;
+            }
+
+            if (
+              view === "since"
+            ) {
+              renderSince();
+              return;
+            }
+
+            if (
+              view === "developing"
+            ) {
+              renderDeveloping();
+              return;
+            }
+
+            if (
+              view === "markets"
+            ) {
+              renderMarkets();
+              return;
+            }
+
+            if (
+              view === "saved"
+            ) {
+              renderSaved();
+              return;
+            }
+
+            if (
+              view === "explore"
+            ) {
+              renderExplore();
+              return;
+            }
+
+            renderBrief();
+          }
+        );
+      }
+    );
+
+
+  document
+    .querySelectorAll(
+      "[data-category]"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          () => {
+            const category =
+              button.dataset
+                .category;
+
+            closeSidebar();
+
+            if (category) {
+              showCategory(
+                category
+              );
+            }
+          }
+        );
+      }
+    );
+
+
+  document
+    .addEventListener(
+      "click",
+      event => {
+        const developing =
+          event.target.closest(
+            "[data-open-developing]"
+          );
+
+        if (developing) {
+          renderDeveloping();
+        }
+      }
+    );
+}
+
+
+/* ============================================================
+   GENERAL UI BINDINGS
+============================================================ */
+
+function bindUI() {
+  els.openMenu
+    ?.addEventListener(
+      "click",
+      openSidebar
+    );
+
+
+  els.closeMenu
+    ?.addEventListener(
+      "click",
+      closeSidebar
+    );
+
+
+  els.menuOverlay
+    ?.addEventListener(
+      "click",
+      closeSidebar
+    );
+
+
+  els.searchButton
+    ?.addEventListener(
+      "click",
+      openSearch
+    );
+
+
+  els.desktopSearchTrigger
+    ?.addEventListener(
+      "click",
+      openSearch
+    );
+
+
+  els.closeSearch
+    ?.addEventListener(
+      "click",
+      closeSearch
+    );
+
+
+  els.searchInput
+    ?.addEventListener(
+      "input",
+      event => {
+        const query =
+          event.target.value
+            .trim();
+
+        if (
+          query.length >= 2
+        ) {
+          renderSearchResults(
+            query
+          );
+        }
+      }
+    );
+
+
+  els.searchInput
+    ?.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key ===
+          "Enter"
+        ) {
+          const query =
+            event.target.value
+              .trim();
+
+          closeSearch();
+
+          renderSearchResults(
+            query
+          );
+        }
+
+        if (
+          event.key ===
+          "Escape"
+        ) {
+          closeSearch();
+        }
+      }
+    );
+
+
+  els.themeButton
+    ?.addEventListener(
+      "click",
+      toggleTheme
+    );
+
+
+  els.sidebarThemeButton
+    ?.addEventListener(
+      "click",
+      toggleTheme
+    );
+
+
+  els.viewSinceButton
+    ?.addEventListener(
+      "click",
+      renderSince
+    );
+
+
+  els.contextSinceButton
+    ?.addEventListener(
+      "click",
+      renderSince
+    );
+
+
+  els.closeSheet
+    ?.addEventListener(
+      "click",
+      closeSources
+    );
+
+
+  els.sheetBackdrop
+    ?.addEventListener(
+      "click",
+      closeSources
+    );
+
+
+  document
+    .addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key ===
+          "Escape"
+        ) {
+          closeSources();
+          closeSearch();
+          closeSidebar();
+        }
+      }
+    );
+}
+
+
+/* ============================================================
+   HEADER / STATUS
+============================================================ */
+
+function renderDateHeader() {
+  const now =
+    new Date();
+
+  const formatted =
+    new Intl.DateTimeFormat(
+      "en-IN",
+      {
+        weekday: "short",
+        day: "numeric",
+        month: "short"
+      }
+    ).format(now);
+
+  if (
+    els.topbarDate
+  ) {
+    els.topbarDate.textContent =
+      formatted;
+  }
+}
+
+
+function renderUpdateStatus() {
+  const generated =
+    state.data
+      ?.generated_at;
+
+  const updateText =
+    generated
+      ? `Updated ${ago(
+          generated
+        )}`
+      : "Update unavailable";
+
+  if (
+    els.lastUpdated
+  ) {
+    els.lastUpdated.textContent =
+      updateText;
+  }
+
+  if (
+    els.topbarUpdated
+  ) {
+    els.topbarUpdated.textContent =
+      updateText;
   }
 
 
-  /* =========================================================
-     ARCHIVES
-     ========================================================= */
+  const sources =
+    Array.isArray(
+      state.data?.sources
+    )
+      ? state.data.sources
+      : [];
 
-  function renderArchives() {
-    S.view = 'archives';
+  const healthy =
+    sources.filter(
+      source =>
+        source?.ok
+    ).length;
 
-    active('archives');
+  const total =
+    sources.length;
 
-    setHeader(
-      'LIBRARY',
-      'Archives',
-      'Previous Daily Intelligence briefings.'
+  const healthyEnough =
+    !total ||
+    healthy / total >= 0.7;
+
+
+  if (
+    els.healthDot
+  ) {
+    els.healthDot.classList.toggle(
+      "warning",
+      !healthyEnough
+    );
+  }
+
+
+  if (
+    els.sidebarHealthDot
+  ) {
+    els.sidebarHealthDot
+      .classList
+      .toggle(
+        "warning",
+        !healthyEnough
+      );
+  }
+
+
+  if (
+    els.sidebarStatus
+  ) {
+    els.sidebarStatus.textContent =
+      total
+        ? `${healthy}/${total} sources healthy`
+        : "Intelligence online";
+  }
+}
+
+
+/* ============================================================
+   SINCE LAST VISIT PANEL
+============================================================ */
+
+function renderSincePanel() {
+  if (
+    !els.sinceSummary
+  ) {
+    return;
+  }
+
+  if (
+    !state.previousVisit
+  ) {
+    els.sinceSummary.textContent =
+      "Your first catch-up will appear on your next visit.";
+
+    return;
+  }
+
+  const stories =
+    sinceStories();
+
+  if (!stories.length) {
+    els.sinceSummary.textContent =
+      "You're caught up. No major new developments since your last visit.";
+
+    return;
+  }
+
+  const critical =
+    stories.filter(
+      story =>
+        level(story) ===
+        "critical"
+    ).length;
+
+  const significant =
+    stories.filter(
+      story =>
+        level(story) ===
+        "significant"
+    ).length;
+
+  const categories =
+    [
+      ...new Set(
+        stories
+          .map(
+            story =>
+              cat(
+                story?.category ||
+                ""
+              )
+          )
+          .filter(Boolean)
+      )
+    ]
+      .slice(0, 3)
+      .join(", ");
+
+
+  let message =
+    `${stories.length} new ${
+      stories.length === 1
+        ? "development"
+        : "developments"
+    } since your last visit.`;
+
+  if (critical) {
+    message +=
+      ` ${critical} ${
+        critical === 1
+          ? "is"
+          : "are"
+      } critical.`;
+  } else if (significant) {
+    message +=
+      ` ${significant} ${
+        significant === 1
+          ? "is"
+          : "are"
+      } significant.`;
+  }
+
+  if (categories) {
+    message +=
+      ` Most activity: ${categories}.`;
+  }
+
+  els.sinceSummary.textContent =
+    message;
+}
+
+
+/* ============================================================
+   DATA NORMALISATION
+============================================================ */
+
+function normalisePayload(
+  data
+) {
+  const clusters =
+    Array.isArray(
+      data?.clusters
+    )
+      ? data.clusters
+      : [];
+
+
+  /*
+   * V5.4 stores image_url directly on clusters and
+   * individual articles. Nothing synthetic is created here.
+   */
+  state.clusters =
+    dedupe(
+      clusters
+        .filter(
+          story =>
+            story &&
+            story.title
+        )
     );
 
-    setSinceVisible(false);
 
-    const contextRail =
-      $('#contextRail');
+  state.top =
+    dedupe(
+      briefOf(
+        data,
+        state.clusters
+      )
+    );
 
-    if (contextRail) {
-      contextRail.hidden = true;
+
+  state.markets =
+    data?.markets &&
+    typeof data.markets ===
+      "object"
+      ? data.markets
+      : {};
+}
+
+
+/* ============================================================
+   DATA LOAD
+============================================================ */
+
+async function loadData() {
+  const response =
+    await fetch(
+      `${DATA_URL}?v=${Date.now()}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `latest.json returned ${response.status}`
+    );
+  }
+
+  const data =
+    await response.json();
+
+  if (
+    !data ||
+    typeof data !==
+      "object"
+  ) {
+    throw new Error(
+      "latest.json did not contain a valid payload"
+    );
+  }
+
+  state.data =
+    data;
+
+  normalisePayload(
+    data
+  );
+}
+
+
+/* ============================================================
+   ARCHIVES
+============================================================ */
+
+async function loadArchives() {
+  try {
+    const response =
+      await fetch(
+        `${ARCHIVES_URL}?v=${Date.now()}`,
+        {
+          cache: "no-store"
+        }
+      );
+
+    if (!response.ok) {
+      return [];
     }
 
-    $('#contentView').innerHTML = `
-      <div class="empty">
+    return await response.json();
+
+  } catch (error) {
+    return [];
+  }
+}
+
+
+/* ============================================================
+   ERROR STATE
+============================================================ */
+
+function renderLoadError(
+  error
+) {
+  console.error(
+    "Daily Intelligence failed to load:",
+    error
+  );
+
+  setHeader(
+    "DAILY INTELLIGENCE",
+    "We couldn't load today's intelligence",
+    "The page loaded, but the latest data could not be read."
+  );
+
+  showSince(false);
+
+  if (
+    els.contentView
+  ) {
+    els.contentView.innerHTML = `
+      <section
+        class="empty-state load-error"
+      >
+
+        <div
+          class="empty-state-icon"
+        >
+          !
+        </div>
 
         <h2>
-          Archives
+          Intelligence unavailable
         </h2>
 
         <p>
-          Previous generated briefings will appear here.
+          The latest data file could not be loaded.
+          This is usually temporary.
         </p>
 
-      </div>
+        <button
+          class="primary-button"
+          id="retryLoad"
+        >
+          Retry
+        </button>
+
+      </section>
     `;
-  }
 
-
-  /* =========================================================
-     NAVIGATION
-     ========================================================= */
-
-  function navigate(view, cat) {
-    closeMenu();
-
-    if (cat) {
-      renderCategory(cat);
-      window.scrollTo(0, 0);
-      return;
-    }
-
-    const routes = {
-      brief: renderBrief,
-      since: renderSince,
-      developing: renderDeveloping,
-      markets: renderMarkets,
-      saved: renderSaved,
-      archives: renderArchives,
-      sources: renderSources,
-      explore: renderExplore
-    };
-
-    (routes[view] || renderBrief)();
-
-    window.scrollTo(0, 0);
-  }
-
-
-  /* =========================================================
-     MENU
-     ========================================================= */
-
-  function closeMenu() {
-    document.body.classList.remove(
-      'menu-open'
-    );
-
-    const openButton =
-      $('#openMenu');
-
-    if (openButton) {
-      openButton.setAttribute(
-        'aria-expanded',
-        'false'
-      );
-    }
-  }
-
-
-  /* =========================================================
-     THEME
-     ========================================================= */
-
-  function toggleTheme() {
-    const dark =
-      document.documentElement.dataset.theme ===
-      'dark';
-
-    document.documentElement.dataset.theme =
-      dark
-        ? 'light'
-        : 'dark';
-
-    localStorage.setItem(
-      'di:theme',
-      dark
-        ? 'light'
-        : 'dark'
-    );
-  }
-
-
-  /* =========================================================
-     EVENTS
-     ========================================================= */
-
-  function bind() {
-    document.addEventListener(
-      'click',
-      event => {
-        const save =
-          event.target.closest('[data-save]');
-
-        if (save) {
-          event.preventDefault();
-
-          const storyKey =
-            save.dataset.save;
-
-          if (S.saved.has(storyKey)) {
-            S.saved.delete(storyKey);
-          } else {
-            S.saved.add(storyKey);
-          }
-
-          localStorage.setItem(
-            'di:saved',
-            JSON.stringify([...S.saved])
-          );
-
-          save.textContent =
-            S.saved.has(storyKey)
-              ? '★'
-              : '☆';
-
-          save.classList.toggle(
-            'saved',
-            S.saved.has(storyKey)
-          );
-
-          return;
-        }
-
-        const cat =
-          event.target.closest(
-            '[data-category]'
-          );
-
-        if (cat) {
-          event.preventDefault();
-
-          navigate(
-            null,
-            cat.dataset.category
-          );
-
-          return;
-        }
-
-        const view =
-          event.target.closest(
-            '[data-view]'
-          );
-
-        if (view) {
-          event.preventDefault();
-
-          navigate(
-            view.dataset.view
-          );
-        }
-      }
-    );
-
-
-    $('#openMenu')?.addEventListener(
-      'click',
-      () => {
-        document.body.classList.add(
-          'menu-open'
-        );
-
-        $('#openMenu')?.setAttribute(
-          'aria-expanded',
-          'true'
-        );
-      }
-    );
-
-
-    $('#menuOverlay')?.addEventListener(
-      'click',
-      closeMenu
-    );
-
-
-    $('#closeMenu')?.addEventListener(
-      'click',
-      closeMenu
-    );
-
-
-    $('#themeButton')?.addEventListener(
-      'click',
-      toggleTheme
-    );
-
-
-    $('#sidebarThemeButton')?.addEventListener(
-      'click',
-      toggleTheme
-    );
-
-
-    const toggleSearch = () => {
-      $('#searchPanel')
-        ?.classList
-        .toggle('hidden');
-
-      setTimeout(
+    $("retryLoad")
+      ?.addEventListener(
+        "click",
         () => {
-          $('#searchInput')?.focus();
-        },
-        0
+          window.location.reload();
+        }
       );
-    };
-
-
-    $('#searchButton')?.addEventListener(
-      'click',
-      toggleSearch
-    );
-
-
-    $('#desktopSearchTrigger')
-      ?.addEventListener(
-        'click',
-        toggleSearch
-      );
-
-
-    $('#closeSearch')?.addEventListener(
-      'click',
-      () => {
-        $('#searchPanel')
-          ?.classList
-          .add('hidden');
-      }
-    );
-
-
-    $('#viewSinceButton')
-      ?.addEventListener(
-        'click',
-        () => navigate('since')
-      );
-
-
-    $('#contextSinceButton')
-      ?.addEventListener(
-        'click',
-        () => navigate('since')
-      );
-
-
-    $('#searchInput')?.addEventListener(
-      'keydown',
-      event => {
-        if (event.key !== 'Enter') {
-          return;
-        }
-
-        const raw =
-          event.target.value.trim();
-
-        const query =
-          raw.toLowerCase();
-
-        if (!query) {
-          return;
-        }
-
-        setHeader(
-          'SEARCH',
-          `Results for “${raw}”`,
-          'Across the current intelligence set.'
-        );
-
-        setSinceVisible(false);
-
-        const contextRail =
-          $('#contextRail');
-
-        if (contextRail) {
-          contextRail.hidden = true;
-        }
-
-        const items =
-          S.clusters.filter(cluster =>
-            `
-              ${cluster.title || ''}
-              ${desc(cluster)}
-              ${source(cluster)}
-              ${displayCat(cluster)}
-            `
-              .toLowerCase()
-              .includes(query)
-          );
-
-        $('#contentView').innerHTML =
-          items.length
-            ? `
-              <div class="signal-list">
-
-                ${
-                  items
-                    .slice(0, 50)
-                    .map(signal)
-                    .join('')
-                }
-
-              </div>
-            `
-            : `
-              <div class="empty">
-
-                <h2>
-                  No matching developments.
-                </h2>
-
-              </div>
-            `;
-
-        $('#searchPanel')
-          ?.classList
-          .add('hidden');
-      }
-    );
-
-
-    document.addEventListener(
-      'keydown',
-      event => {
-        if (
-          (event.metaKey || event.ctrlKey) &&
-          event.key.toLowerCase() === 'k'
-        ) {
-          event.preventDefault();
-          toggleSearch();
-        }
-
-        if (event.key === 'Escape') {
-          closeMenu();
-
-          $('#searchPanel')
-            ?.classList
-            .add('hidden');
-        }
-      }
-    );
   }
 
-
-  /* =========================================================
-     BOOT
-     ========================================================= */
-
-  async function boot() {
-    if (
-      localStorage.getItem('di:theme') ===
-      'dark'
-    ) {
-      document.documentElement.dataset.theme =
-        'dark';
-    }
-
-    bind();
-
-    try {
-      const response =
-        await fetch(
-          './data/latest.json?ts=' +
-          Date.now(),
-          {
-            cache: 'no-store'
-          }
-        );
-
-      if (!response.ok) {
-        throw new Error(
-          `latest.json returned HTTP ${response.status}`
-        );
-      }
-
-      S.data =
-        await response.json();
-
-      S.clusters =
-        clustersOf(S.data);
-
-      if (!S.clusters.length) {
-        throw new Error(
-          'No story array found in latest.json'
-        );
-      }
-
-      S.brief =
-        briefOf(
-          S.data,
-          S.clusters
-        );
-
-
-      /* -----------------------------------------
-         DATE
-         ----------------------------------------- */
-
-      const now =
-        new Date();
-
-      const formattedDate =
-        new Intl.DateTimeFormat(
-          'en-IN',
-          {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-          }
-        ).format(now);
-
-      const topbarDate =
-        $('#topbarDate');
-
-      if (topbarDate) {
-        topbarDate.textContent =
-          formattedDate;
-      }
-
-
-      /* -----------------------------------------
-         GENERATED TIME
-         ----------------------------------------- */
-
-      const generated =
-        F(
-          S.data.generated_at,
-          S.data.metadata?.generated_at
-        );
-
-      const updatedText =
-        generated
-          ? `Last updated ${ago(generated)}`
-          : 'Data loaded';
-
-      const topbarUpdated =
-        $('#topbarUpdated');
-
-      if (topbarUpdated) {
-        topbarUpdated.textContent =
-          updatedText;
-      }
-
-      const lastUpdated =
-        $('#lastUpdated');
-
-      if (lastUpdated) {
-        lastUpdated.textContent =
-          updatedText;
-      }
-
-
-      /* -----------------------------------------
-         SIDEBAR STATUS
-         ----------------------------------------- */
-
-      const sidebarStatus =
-        $('#sidebarStatus');
-
-      if (sidebarStatus) {
-        sidebarStatus.textContent =
-          `${S.clusters.length} events loaded`;
-      }
-
-
-      $('#healthDot')
-        ?.classList
-        .add('healthy');
-
-      $('#sidebarHealthDot')
-        ?.classList
-        .add('healthy');
-
-
-      /* -----------------------------------------
-         RENDER
-         ----------------------------------------- */
-
-      sincePanel();
-      renderBrief();
-
-
-      /* -----------------------------------------
-         RECORD VISIT
-         ----------------------------------------- */
-
-      localStorage.setItem(
-        'di:lastVisit',
-        new Date().toISOString()
-      );
-
-    } catch (error) {
-      console.error(
-        'Daily Intelligence failed:',
-        error
-      );
-
-      const content =
-        $('#contentView');
-
-      if (content) {
-        content.innerHTML = `
-          <div class="empty">
-
-            <h2>
-              Could not load Daily Intelligence
-            </h2>
-
-            <p>
-              ${esc(error.message)}
-            </p>
-
-          </div>
-        `;
-      }
-
-      const sidebarStatus =
-        $('#sidebarStatus');
-
-      if (sidebarStatus) {
-        sidebarStatus.textContent =
-          'Data unavailable';
-      }
-
-      const topbarUpdated =
-        $('#topbarUpdated');
-
-      if (topbarUpdated) {
-        topbarUpdated.textContent =
-          'Data unavailable';
-      }
-
-      const lastUpdated =
-        $('#lastUpdated');
-
-      if (lastUpdated) {
-        lastUpdated.textContent =
-          'Data unavailable';
-      }
-    }
-  }
-
-
-  /* =========================================================
-     START
-     ========================================================= */
 
   if (
-    document.readyState === 'loading'
+    els.sidebarStatus
   ) {
-    document.addEventListener(
-      'DOMContentLoaded',
-      boot,
-      {
-        once: true
-      }
-    );
-  } else {
-    boot();
+    els.sidebarStatus.textContent =
+      "Data unavailable";
   }
 
-})();
+
+  els.healthDot
+    ?.classList
+    .add(
+      "warning"
+    );
+
+
+  els.sidebarHealthDot
+    ?.classList
+    .add(
+      "warning"
+    );
+}
+
+
+/* ============================================================
+   MOBILE SAFETY
+============================================================ */
+
+function enforceMobileNavigation() {
+  /*
+   * CSS will perform the visual work in the next replacement.
+   * This JS safety closes any legacy drawer state whenever
+   * the viewport enters mobile width.
+   */
+  const mobile =
+    window.matchMedia(
+      "(max-width: 760px)"
+    );
+
+  const handle =
+    event => {
+      if (
+        event.matches
+      ) {
+        closeSidebar();
+      }
+    };
+
+  handle(mobile);
+
+  if (
+    typeof mobile
+      .addEventListener ===
+    "function"
+  ) {
+    mobile.addEventListener(
+      "change",
+      handle
+    );
+  } else if (
+    typeof mobile
+      .addListener ===
+    "function"
+  ) {
+    mobile.addListener(
+      handle
+    );
+  }
+}
+
+
+/* ============================================================
+   IMAGE FAILURE SAFETY
+============================================================ */
+
+function bindImageSafety() {
+  document
+    .addEventListener(
+      "error",
+      event => {
+        const image =
+          event.target;
+
+        if (
+          !image ||
+          image.tagName !==
+            "IMG" ||
+          !image.closest(
+            ".story-visual"
+          )
+        ) {
+          return;
+        }
+
+        const wrapper =
+          image.closest(
+            ".story-visual"
+          );
+
+        wrapper?.classList.add(
+          "image-failed"
+        );
+      },
+      true
+    );
+}
+
+
+/* ============================================================
+   BOOT
+============================================================ */
+
+async function boot() {
+  /*
+   * Theme first so we do not flash the wrong theme.
+   */
+  applyTheme(
+    localStorage.getItem(
+      "di_theme"
+    ) ||
+    "light"
+  );
+
+
+  renderDateHeader();
+
+  bindNavigation();
+  bindUI();
+  bindImageSafety();
+  enforceMobileNavigation();
+
+
+  try {
+    await loadData();
+
+    renderUpdateStatus();
+    renderSincePanel();
+
+    /*
+     * Brief is always the default landing view.
+     */
+    renderBrief();
+
+
+    /*
+     * Archives are intentionally non-blocking.
+     * They can be used by a future archive view
+     * without delaying today's intelligence.
+     */
+    loadArchives()
+      .then(
+        archives => {
+          state.archives =
+            Array.isArray(
+              archives
+            )
+              ? archives
+              : [];
+        }
+      )
+      .catch(
+        () => {
+          state.archives = [];
+        }
+      );
+
+
+    /*
+     * Store this visit only after today's data has loaded.
+     * previousVisit remains the value captured before boot.
+     */
+    localStorage.setItem(
+      "di_last_visit",
+      state.currentVisit
+    );
+
+
+    document.body.classList.add(
+      "app-ready"
+    );
+
+
+    document.dispatchEvent(
+      new CustomEvent(
+        "daily-intelligence-ready",
+        {
+          detail: {
+            version:
+              state.data
+                ?.version ||
+              null,
+
+            clusters:
+              state.clusters
+                .length,
+
+            brief:
+              displayBrief()
+                .length
+          }
+        }
+      )
+    );
+
+  } catch (error) {
+    renderLoadError(
+      error
+    );
+
+    document.body.classList.add(
+      "app-ready"
+    );
+  }
+}
+
+
+/* ============================================================
+   START
+============================================================ */
+
+if (
+  document.readyState ===
+  "loading"
+) {
+  document.addEventListener(
+    "DOMContentLoaded",
+    boot,
+    {
+      once: true
+    }
+  );
+} else {
+  boot();
+}
