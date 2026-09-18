@@ -28,8 +28,6 @@ const els = {
   pageTitle: $("pageTitle"),
   pageDescription: $("pageDescription"),
   lastUpdated: $("lastUpdated"),
-  healthDot: $("healthDot"),
-  sidebarHealthDot: $("sidebarHealthDot"),
   sidebarStatus: $("sidebarStatus"),
   sinceSummary: $("sinceSummary"),
   viewSinceButton: $("viewSinceButton"),
@@ -42,9 +40,9 @@ const els = {
 };
 
 
-/* =========================================================
-   BASIC HELPERS
-========================================================= */
+/* ============================================================
+   HELPERS
+============================================================ */
 
 function escapeHtml(value = "") {
   return String(value)
@@ -102,25 +100,6 @@ function timeAgo(value) {
   return days === 1 ? "yesterday" : `${days}d ago`;
 }
 
-function shortDate(value) {
-  const date = parseDate(value);
-
-  if (!date) return "";
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short"
-  }).format(date);
-}
-
-function longToday() {
-  return new Intl.DateTimeFormat("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long"
-  }).format(new Date());
-}
-
 function storyTimestamp(story) {
   return (
     story.published_at ||
@@ -144,19 +123,18 @@ function primaryPublisher(story) {
 
 function sourceCount(story) {
   if (story.source_count) return Number(story.source_count);
-
   if (Array.isArray(story.sources)) return story.sources.length;
 
   return 1;
 }
 
-function usefulSummary(story) {
+function usefulSummary(story, limit = 85) {
   return truncateWords(
     story.brief ||
     story.description ||
     story.primary?.description ||
     "",
-    90
+    limit
   );
 }
 
@@ -169,10 +147,37 @@ function displayCategory(category) {
   return aliases[category] || category;
 }
 
+function dedupeStories(stories = []) {
+  const seen = new Set();
 
-/* =========================================================
+  return stories.filter(story => {
+    const key = storyKey(story);
+
+    if (!key || seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function sortByImportance(stories = []) {
+  return [...stories].sort((a, b) => {
+    const importance =
+      Number(b.importance || 0) - Number(a.importance || 0);
+
+    if (importance !== 0) return importance;
+
+    return (
+      (parseDate(storyTimestamp(b))?.getTime() || 0) -
+      (parseDate(storyTimestamp(a))?.getTime() || 0)
+    );
+  });
+}
+
+
+/* ============================================================
    IMPORTANCE
-========================================================= */
+============================================================ */
 
 function importanceLevel(story) {
   const level = String(story.importance_label || "").toLowerCase();
@@ -196,9 +201,9 @@ function isNewSinceVisit(story) {
 }
 
 
-/* =========================================================
+/* ============================================================
    SAVED
-========================================================= */
+============================================================ */
 
 function isSaved(story) {
   return state.saved.has(storyKey(story));
@@ -219,9 +224,9 @@ function toggleSaved(story) {
 }
 
 
-/* =========================================================
+/* ============================================================
    MARKET IMPACT
-========================================================= */
+============================================================ */
 
 function marketImpactHtml(story) {
   if (!story.market_impact) return "";
@@ -251,9 +256,9 @@ function marketImpactHtml(story) {
 }
 
 
-/* =========================================================
-   STORY CARD
-========================================================= */
+/* ============================================================
+   STANDARD STORY CARD
+============================================================ */
 
 function storyCard(story) {
   const level = importanceLevel(story);
@@ -357,9 +362,12 @@ function renderStoryList(container, stories) {
 }
 
 
-/* =========================================================
-   V5.2 MARKET NAVIGATION
-========================================================= */
+/* ============================================================
+   V5.3 NAVIGATION
+
+   ONE Markets button.
+   No IPO / stocks / MF navigation clutter.
+============================================================ */
 
 function installMarketsNavigation() {
   const navigation = document.querySelector(".navigation");
@@ -367,17 +375,33 @@ function installMarketsNavigation() {
   if (!navigation) return;
 
   /*
-    Remove the old V5.1 dynamically-created Markets group
-    if it exists.
+    Remove any previous dynamically generated Markets section.
   */
 
-  [...navigation.querySelectorAll(".nav-group")].forEach(group => {
-    const label = group.querySelector(".nav-label")?.textContent
-      ?.trim()
-      ?.toLowerCase();
+  [...navigation.querySelectorAll(".market-navigation")].forEach(
+    node => node.remove()
+  );
 
-    if (label === "markets") {
-      group.remove();
+  /*
+    Also remove old market category buttons that may have been
+    injected by V5.1 / V5.2.
+  */
+
+  navigation.querySelectorAll(".nav-item").forEach(button => {
+    const category = button.dataset.category;
+    const marketView = button.dataset.marketView;
+
+    if (
+      marketView ||
+      [
+        "Indian Markets",
+        "Global → India",
+        "Companies & Earnings",
+        "IPO",
+        "Mutual Funds"
+      ].includes(category)
+    ) {
+      button.remove();
     }
   });
 
@@ -397,62 +421,11 @@ function installMarketsNavigation() {
   group.innerHTML = `
     <div class="nav-label">Markets</div>
 
-    <button class="nav-item" data-market-view="market-brief">
-      Market Brief
-    </button>
-
-    <button class="nav-item" data-category="Indian Markets">
-      Indian Markets
-    </button>
-
-    <button class="nav-item" data-category="Global → India">
-      Global → India
-    </button>
-
-    <div class="nav-label" style="margin-top:16px">IPOs</div>
-
-    <button class="nav-item" data-market-view="ipo-open">
-      Open Now
-    </button>
-
-    <button class="nav-item" data-market-view="ipo-upcoming">
-      Upcoming
-    </button>
-
-    <button class="nav-item" data-market-view="ipo-listed">
-      Recently Listed
-    </button>
-
-    <div class="nav-label" style="margin-top:16px">Stocks</div>
-
-    <button class="nav-item" data-market-view="stocks-focus">
-      Stocks in Focus
-    </button>
-
-    <button class="nav-item" data-market-view="investor-conversation">
-      Investor Conversation
-    </button>
-
-    <button class="nav-item" data-category="Companies & Earnings">
-      Results & Earnings
-    </button>
-
-    <div class="nav-label" style="margin-top:16px">Mutual Funds</div>
-
-    <button class="nav-item" data-market-view="mutual-funds">
-      MF Watch
-    </button>
-
-    <button class="nav-item" data-market-view="fund-flows">
-      Fund Flows & Trends
-    </button>
-
     <button
       class="nav-item"
-      data-market-view="market-calendar"
-      style="margin-top:10px"
+      data-market-home="true"
     >
-      Market Calendar
+      Markets
     </button>
   `;
 
@@ -464,258 +437,175 @@ function installMarketsNavigation() {
 }
 
 
-/* =========================================================
-   GENERIC VIEW
-========================================================= */
+/* ============================================================
+   NEWSPAPER MARKET COMPONENTS
+============================================================ */
 
-function setPageHeader(title, description) {
-  if (els.pageTitle) els.pageTitle.textContent = title;
-  if (els.pageDescription) els.pageDescription.textContent = description;
+function marketMeta(story) {
+  return `
+    <div class="market-news-meta">
+      ${escapeHtml(primaryPublisher(story))}
+      <span>·</span>
+      ${escapeHtml(timeAgo(storyTimestamp(story)))}
+    </div>
+  `;
 }
 
-function renderViewHeader(kicker, title, description = "") {
+function marketLead(story) {
+  if (!story) return "";
+
   return `
-    <div class="view-header">
-      <div class="section-kicker">${escapeHtml(kicker)}</div>
-      <h2>${escapeHtml(title)}</h2>
+    <article class="market-lead">
+
+      <div class="market-label">
+        TOP STORY
+      </div>
+
+      <a
+        href="${escapeHtml(primaryUrl(story))}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="market-headline-link"
+      >
+        <h2>${escapeHtml(story.title || "")}</h2>
+      </a>
+
       ${
-        description
-          ? `<p>${escapeHtml(description)}</p>`
+        usefulSummary(story, 100)
+          ? `
+            <p class="market-lead-summary">
+              ${escapeHtml(usefulSummary(story, 100))}
+            </p>
+          `
           : ""
       }
-    </div>
+
+      ${marketImpactHtml(story)}
+
+      ${marketMeta(story)}
+
+    </article>
   `;
 }
 
-function renderSingleView(title, stories, description = "") {
-  els.contentView.innerHTML = `
-    <section class="content-section">
-      ${renderViewHeader("DAILY INTELLIGENCE", title, description)}
-      <div id="singleStoryList"></div>
-    </section>
-  `;
+function marketSecondary(story) {
+  if (!story) return "";
 
-  renderStoryList($("singleStoryList"), stories);
+  return `
+    <article class="market-secondary">
+
+      <a
+        href="${escapeHtml(primaryUrl(story))}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="market-headline-link"
+      >
+        <h3>${escapeHtml(story.title || "")}</h3>
+      </a>
+
+      ${
+        usefulSummary(story, 38)
+          ? `
+            <p>
+              ${escapeHtml(usefulSummary(story, 38))}
+            </p>
+          `
+          : ""
+      }
+
+      ${marketMeta(story)}
+
+    </article>
+  `;
 }
 
+function marketHeadlineRow(story) {
+  if (!story) return "";
 
-/* =========================================================
-   MARKET BRIEF
-========================================================= */
+  return `
+    <article class="market-headline-row">
 
-function renderMarketBrief() {
-  state.currentView = "market-brief";
-  state.currentCategory = null;
+      <a
+        href="${escapeHtml(primaryUrl(story))}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        ${escapeHtml(story.title || "")}
+      </a>
 
-  closeMenu();
-
-  setPageHeader(
-    "Market Brief",
-    "The developments that matter for Indian investors today."
-  );
-
-  const indian = state.clusters
-    .filter(x => x.category === "Indian Markets")
-    .slice(0, 4);
-
-  const global = state.clusters
-    .filter(x => x.category === "Global → India")
-    .slice(0, 3);
-
-  const companies = state.clusters
-    .filter(x => x.category === "Companies & Earnings")
-    .slice(0, 3);
-
-  const ipoCount =
-    (state.markets.ipo_open || []).length +
-    (state.markets.ipo_upcoming || []).length;
-
-  els.contentView.innerHTML = `
-    <section class="content-section">
-
-      ${renderViewHeader(
-        "INDIAN INVESTOR INTELLIGENCE",
-        "Market Brief",
-        "Signal before noise. No buy/sell calls."
-      )}
-
-      <div class="market-pulse">
-
-        <div class="market-pulse-item">
-          <div class="market-pulse-name">INDIA</div>
-          <div class="market-pulse-value">${indian.length}</div>
-          <div class="market-pulse-note">developments worth knowing</div>
-        </div>
-
-        <div class="market-pulse-item">
-          <div class="market-pulse-name">GLOBAL → INDIA</div>
-          <div class="market-pulse-value">${global.length}</div>
-          <div class="market-pulse-note">external market drivers</div>
-        </div>
-
-        <div class="market-pulse-item">
-          <div class="market-pulse-name">IPO WATCH</div>
-          <div class="market-pulse-value">${ipoCount}</div>
-          <div class="market-pulse-note">open or upcoming</div>
-        </div>
-
+      <div class="market-news-meta">
+        ${escapeHtml(primaryPublisher(story))}
+        ·
+        ${escapeHtml(timeAgo(storyTimestamp(story)))}
       </div>
 
-      <div id="marketIndia"></div>
-      <div id="marketGlobal"></div>
-      <div id="marketCompanies"></div>
-
-    </section>
+    </article>
   `;
-
-  renderMarketSection(
-    $("marketIndia"),
-    "India Today",
-    indian
-  );
-
-  renderMarketSection(
-    $("marketGlobal"),
-    "Global → India",
-    global
-  );
-
-  renderMarketSection(
-    $("marketCompanies"),
-    "Companies & Earnings",
-    companies
-  );
 }
 
-function renderMarketSection(container, title, stories) {
-  if (!container || !stories.length) return;
+function marketSectionHeader(title, kicker = "") {
+  return `
+    <div class="market-section-heading">
 
-  container.innerHTML = `
-    <div class="section-heading" style="margin-top:38px">
       <div>
-        <div class="section-kicker">MARKETS</div>
-        <h2>${escapeHtml(title)}</h2>
-      </div>
-      <span class="section-count">${stories.length}</span>
-    </div>
-
-    <div class="market-story-holder"></div>
-  `;
-
-  renderStoryList(
-    container.querySelector(".market-story-holder"),
-    stories
-  );
-}
-
-
-/* =========================================================
-   IPOs
-========================================================= */
-
-function renderIPOView(type) {
-  state.currentView = type;
-  state.currentCategory = null;
-
-  closeMenu();
-
-  const configs = {
-    "ipo-open": {
-      title: "Open IPOs",
-      description: "Public issues currently open for subscription.",
-      key: "ipo_open"
-    },
-
-    "ipo-upcoming": {
-      title: "Upcoming IPOs",
-      description: "Issues expected or officially scheduled to open next.",
-      key: "ipo_upcoming"
-    },
-
-    "ipo-listed": {
-      title: "Recently Listed",
-      description: "Recently completed IPOs and their listing information.",
-      key: "ipo_recent"
-    }
-  };
-
-  const config = configs[type];
-  const items = state.markets[config.key] || [];
-
-  setPageHeader(config.title, config.description);
-
-  els.contentView.innerHTML = `
-    <section class="content-section">
-
-      ${renderViewHeader("IPO WATCH", config.title, config.description)}
-
-      <div class="story-list">
-
         ${
-          items.length
-            ? items.map(ipo => ipoCard(ipo)).join("")
-            : `
-              <div class="empty-state">
-                <h2>No verified IPOs to show.</h2>
-                <p>
-                  We won't fill this section with unconfirmed IPO rumours.
-                </p>
-              </div>
-            `
+          kicker
+            ? `<div class="market-label">${escapeHtml(kicker)}</div>`
+            : ""
         }
 
+        <h2>${escapeHtml(title)}</h2>
       </div>
 
-    </section>
+    </div>
   `;
 }
 
-function ipoCard(ipo) {
+
+/* ============================================================
+   IPO SECTION
+============================================================ */
+
+function ipoNewspaperItem(ipo) {
   const details = [
-    ipo.price_band
-      ? `Price band ${ipo.price_band}`
-      : null,
-
-    ipo.issue_size
-      ? `Issue ${ipo.issue_size}`
-      : null,
-
-    ipo.lot_size
-      ? `Lot ${ipo.lot_size}`
-      : null,
-
-    ipo.close_date
-      ? `Closes ${ipo.close_date}`
-      : null,
-
-    ipo.listing_date
-      ? `Listing ${ipo.listing_date}`
-      : null
+    ipo.status,
+    ipo.price_band,
+    ipo.issue_size,
+    ipo.lot_size ? `Lot ${ipo.lot_size}` : null,
+    ipo.close_date ? `Closes ${ipo.close_date}` : null
   ].filter(Boolean);
 
   return `
-    <article class="story-card">
+    <article class="ipo-news-item">
 
-      <div class="story-topline">
-        <span class="importance-label significant">
-          ${escapeHtml(ipo.status || "IPO")}
-        </span>
-
-        <span class="category-label">
-          ${escapeHtml(ipo.sector || "IPO")}
-        </span>
+      <div class="market-label">
+        ${escapeHtml(ipo.status || "IPO")}
       </div>
 
-      <h3 class="story-title">
-        ${escapeHtml(ipo.name || "")}
+      <h3>
+        ${
+          ipo.url
+            ? `
+              <a
+                href="${escapeHtml(ipo.url)}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ${escapeHtml(ipo.name || "")}
+              </a>
+            `
+            : escapeHtml(ipo.name || "")
+        }
       </h3>
 
       ${
         details.length
           ? `
-            <p class="story-summary">
-              ${escapeHtml(details.join(" · "))}
-            </p>
+            <div class="ipo-facts">
+              ${details.map(detail => `
+                <span>${escapeHtml(detail)}</span>
+              `).join("")}
+            </div>
           `
           : ""
       }
@@ -723,26 +613,18 @@ function ipoCard(ipo) {
       ${
         ipo.what_to_know
           ? `
-            <div class="market-impact">
-              <strong>What to know:</strong>
-              ${escapeHtml(ipo.what_to_know)}
-            </div>
+            <p>
+              ${escapeHtml(truncateWords(ipo.what_to_know, 45))}
+            </p>
           `
           : ""
       }
 
       ${
-        ipo.url
+        ipo.source
           ? `
-            <div class="story-actions">
-              <a
-                class="story-action"
-                href="${escapeHtml(ipo.url)}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View source →
-              </a>
+            <div class="market-news-meta">
+              ${escapeHtml(ipo.source)}
             </div>
           `
           : ""
@@ -752,342 +634,482 @@ function ipoCard(ipo) {
   `;
 }
 
+function renderIPOSection() {
+  const open = state.markets.ipo_open || [];
+  const upcoming = state.markets.ipo_upcoming || [];
+  const recent = state.markets.ipo_recent || [];
 
-/* =========================================================
-   STOCKS IN FOCUS
-========================================================= */
+  const all = [
+    ...open,
+    ...upcoming,
+    ...recent
+  ].slice(0, 6);
 
-function renderStocksFocus() {
-  state.currentView = "stocks-focus";
-  state.currentCategory = null;
+  if (!all.length) {
+    const fallback = state.clusters
+      .filter(story => story.category === "IPO")
+      .slice(0, 5);
 
-  closeMenu();
+    if (!fallback.length) return "";
 
-  setPageHeader(
-    "Stocks in Focus",
-    "Companies with material developments — not random daily movers."
-  );
+    return `
+      <section class="market-section">
 
-  const stories = state.clusters
-    .filter(story =>
-      story.category === "Companies & Earnings" ||
-      story.category === "Indian Markets"
-    )
-    .slice(0, 15);
+        ${marketSectionHeader("IPOs", "IPO WATCH")}
 
-  renderSingleView(
-    "Stocks in Focus",
-    stories,
-    "Material earnings, corporate actions, regulation and company developments."
-  );
-}
+        <div class="market-compact-list">
+          ${fallback.map(marketHeadlineRow).join("")}
+        </div>
 
-
-/* =========================================================
-   INVESTOR CONVERSATION
-========================================================= */
-
-function renderInvestorConversation() {
-  state.currentView = "investor-conversation";
-  state.currentCategory = null;
-
-  closeMenu();
-
-  setPageHeader(
-    "Investor Conversation",
-    "What investors are discussing, kept separate from verified facts."
-  );
-
-  const conversations = state.markets.investor_conversation || [];
-
-  els.contentView.innerHTML = `
-    <section class="content-section">
-
-      ${renderViewHeader(
-        "COMMUNITY SIGNAL",
-        "Investor Conversation",
-        "Recurring investor arguments and concerns. Community discussion is not treated as fact."
-      )}
-
-      ${
-        conversations.length
-          ? conversations.map(item => `
-              <article class="story-card">
-
-                <div class="story-topline">
-                  <span class="importance-label">
-                    INVESTOR CONVERSATION
-                  </span>
-
-                  <span class="category-label">
-                    ${escapeHtml(item.symbol || item.topic || "")}
-                  </span>
-                </div>
-
-                <h3 class="story-title">
-                  ${escapeHtml(item.title || "")}
-                </h3>
-
-                ${
-                  item.positive_case
-                    ? `
-                      <div class="market-impact">
-                        <strong>Positive case being discussed:</strong>
-                        ${escapeHtml(item.positive_case)}
-                      </div>
-                    `
-                    : ""
-                }
-
-                ${
-                  item.concerns
-                    ? `
-                      <p class="story-summary">
-                        <strong>Concerns being discussed:</strong>
-                        ${escapeHtml(item.concerns)}
-                      </p>
-                    `
-                    : ""
-                }
-
-                <div class="story-meta">
-                  Community discussion · not investment advice
-                </div>
-
-              </article>
-            `).join("")
-          : `
-            <div class="empty-state">
-              <h2>No strong conversation signal yet.</h2>
-              <p>
-                We won't manufacture sentiment from a handful of comments.
-              </p>
-            </div>
-          `
-      }
-
-    </section>
-  `;
-}
-
-
-/* =========================================================
-   MUTUAL FUNDS
-========================================================= */
-
-function renderMutualFunds() {
-  state.currentView = "mutual-funds";
-  state.currentCategory = null;
-
-  closeMenu();
-
-  setPageHeader(
-    "Mutual Fund Watch",
-    "The mutual-fund developments worth knowing."
-  );
-
-  const stories = state.markets.mutual_fund_news || [];
-
-  if (stories.length) {
-    renderSingleView(
-      "Mutual Fund Watch",
-      stories,
-      "SEBI, AMFI, fund-house and category developments."
-    );
-    return;
+      </section>
+    `;
   }
 
-  const fallback = state.clusters.filter(story => {
-    const text = `${story.title} ${story.description}`.toLowerCase();
+  return `
+    <section class="market-section">
 
-    return (
-      text.includes("mutual fund") ||
-      text.includes("sip ") ||
-      text.includes("amfi")
-    );
-  });
+      ${marketSectionHeader("IPOs", "IPO WATCH")}
 
-  renderSingleView(
-    "Mutual Fund Watch",
-    fallback,
-    "SEBI, AMFI, fund-house and category developments."
-  );
+      <div class="ipo-newspaper-grid">
+        ${all.map(ipoNewspaperItem).join("")}
+      </div>
+
+    </section>
+  `;
 }
 
-function renderFundFlows() {
-  state.currentView = "fund-flows";
-  state.currentCategory = null;
 
-  closeMenu();
+/* ============================================================
+   MUTUAL FUNDS
+============================================================ */
 
-  setPageHeader(
-    "Fund Flows & Trends",
-    "Where Indian mutual-fund money is moving."
-  );
+function renderMutualFundSection() {
+  let stories = state.markets.mutual_fund_news || [];
 
-  const flows = state.markets.fund_flows || [];
+  if (!stories.length) {
+    stories = state.clusters.filter(story => {
+      const text =
+        `${story.title || ""} ${story.description || ""}`.toLowerCase();
 
-  els.contentView.innerHTML = `
-    <section class="content-section">
+      return (
+        story.category === "Mutual Funds" ||
+        text.includes("mutual fund") ||
+        text.includes("amfi") ||
+        text.includes("sip contribution") ||
+        text.includes("fund inflow")
+      );
+    });
+  }
 
-      ${renderViewHeader(
-        "MUTUAL FUNDS",
-        "Fund Flows & Trends",
-        "Industry flows and category trends, not fund recommendations."
+  stories = dedupeStories(stories).slice(0, 6);
+
+  if (!stories.length) return "";
+
+  const lead = stories[0];
+  const rest = stories.slice(1);
+
+  return `
+    <section class="market-section">
+
+      ${marketSectionHeader(
+        "Mutual Funds",
+        "SAVINGS & FUND FLOWS"
       )}
 
-      ${
-        flows.length
-          ? `
-            <div class="story-list">
-              ${flows.map(item => `
-                <article class="story-card">
+      <div class="market-two-column">
 
-                  <div class="story-topline">
-                    <span class="importance-label significant">
-                      ${escapeHtml(item.category || "FLOW")}
-                    </span>
-                  </div>
+        <div>
+          ${marketSecondary(lead)}
+        </div>
 
-                  <h3 class="story-title">
-                    ${escapeHtml(item.title || "")}
-                  </h3>
+        <div class="market-compact-list">
+          ${rest.map(marketHeadlineRow).join("")}
+        </div>
 
-                  <p class="story-summary">
-                    ${escapeHtml(item.description || "")}
+      </div>
+
+    </section>
+  `;
+}
+
+
+/* ============================================================
+   INVESTOR CONVERSATION
+============================================================ */
+
+function renderInvestorConversationSection() {
+  const items = state.markets.investor_conversation || [];
+
+  if (!items.length) return "";
+
+  return `
+    <section class="market-section investor-conversation-section">
+
+      ${marketSectionHeader(
+        "What Investors Are Talking About",
+        "COMMUNITY SIGNAL"
+      )}
+
+      <p class="market-section-intro">
+        Recurring investor arguments and concerns.
+        Community discussion is kept separate from verified reporting.
+      </p>
+
+      <div class="investor-conversation-grid">
+
+        ${items.slice(0, 6).map(item => `
+          <article class="investor-topic">
+
+            <div class="market-label">
+              ${escapeHtml(item.symbol || item.topic || "DISCUSSION")}
+            </div>
+
+            <h3>
+              ${escapeHtml(item.title || "")}
+            </h3>
+
+            ${
+              item.positive_case
+                ? `
+                  <p>
+                    <strong>Discussed positively:</strong>
+                    ${escapeHtml(item.positive_case)}
                   </p>
+                `
+                : ""
+            }
 
-                </article>
-              `).join("")}
-            </div>
-          `
-          : `
-            <div class="empty-state">
-              <h2>No verified flow update yet.</h2>
-              <p>
-                Monthly flow data will appear only when the source provides it.
-              </p>
-            </div>
-          `
-      }
+            ${
+              item.concerns
+                ? `
+                  <p>
+                    <strong>Concerns:</strong>
+                    ${escapeHtml(item.concerns)}
+                  </p>
+                `
+                : ""
+            }
+
+          </article>
+        `).join("")}
+
+      </div>
 
     </section>
   `;
 }
 
 
-/* =========================================================
-   MARKET CALENDAR
-========================================================= */
+/* ============================================================
+   V5.3 MARKETS FRONT PAGE
+============================================================ */
 
-function renderMarketCalendar() {
-  state.currentView = "market-calendar";
+function renderMarkets() {
+  state.currentView = "markets";
   state.currentCategory = null;
 
   closeMenu();
 
   setPageHeader(
-    "Market Calendar",
-    "The events worth knowing before they happen."
+    "Markets",
+    "Indian markets, companies and investing."
   );
 
-  const events = state.markets.calendar || [];
+  /*
+    PRIMARY MARKET NEWS
+  */
+
+  const india = sortByImportance(
+    state.clusters.filter(story =>
+      story.category === "Indian Markets" ||
+      story.category === "Macro Economics"
+    )
+  );
+
+  const companies = sortByImportance(
+    state.clusters.filter(story =>
+      story.category === "Companies & Earnings" ||
+      story.category === "Business & Micro"
+    )
+  );
+
+  const globalIndia = sortByImportance(
+    state.clusters.filter(story =>
+      story.category === "Global → India"
+    )
+  );
+
+  /*
+    Top story candidates.
+
+    Prefer Indian market / macro stories, then consequential
+    company stories.
+  */
+
+  const frontPageCandidates = dedupeStories([
+    ...india,
+    ...companies,
+    ...globalIndia
+  ]);
+
+  const lead = frontPageCandidates[0] || null;
+
+  const secondary = frontPageCandidates
+    .filter(story => storyKey(story) !== storyKey(lead || {}))
+    .slice(0, 4);
+
+  const usedKeys = new Set(
+    [lead, ...secondary]
+      .filter(Boolean)
+      .map(storyKey)
+  );
+
+  const latest = dedupeStories([
+    ...india,
+    ...companies
+  ])
+    .filter(story => !usedKeys.has(storyKey(story)))
+    .slice(0, 7);
+
+  const globalStories = globalIndia
+    .filter(story => !usedKeys.has(storyKey(story)))
+    .slice(0, 6);
+
+  const companyStories = companies
+    .filter(story => storyKey(story) !== storyKey(lead || {}))
+    .slice(0, 8);
+
 
   els.contentView.innerHTML = `
-    <section class="content-section">
+    <div class="markets-front-page">
 
-      ${renderViewHeader(
-        "COMING UP",
-        "Market Calendar",
-        "IPOs, earnings, policy events and major macro releases."
-      )}
+      <!-- MASTHEAD -->
+
+      <header class="markets-masthead">
+
+        <div>
+          <div class="market-label">
+            DAILY INTELLIGENCE
+          </div>
+
+          <h1>Markets</h1>
+
+          <p>
+            Indian markets, companies and investing.
+            The developments worth knowing, without the trading noise.
+          </p>
+        </div>
+
+        <div class="markets-date">
+          ${escapeHtml(
+            new Intl.DateTimeFormat("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric"
+            }).format(new Date())
+          )}
+        </div>
+
+      </header>
+
+
+      <!-- TOP OF THE PAPER -->
+
+      <section class="markets-top-grid">
+
+        <div class="markets-lead-column">
+          ${
+            lead
+              ? marketLead(lead)
+              : `
+                <div class="market-empty">
+                  No major market development yet.
+                </div>
+              `
+          }
+        </div>
+
+        <div class="markets-secondary-column">
+          ${secondary.map(marketSecondary).join("")}
+        </div>
+
+      </section>
+
+
+      <!-- LATEST + GLOBAL INDIA -->
+
+      <section class="market-section">
+
+        <div class="market-news-columns">
+
+          <div>
+
+            ${marketSectionHeader(
+              "Latest",
+              "INDIA TODAY"
+            )}
+
+            <div class="market-compact-list">
+              ${
+                latest.length
+                  ? latest.map(marketHeadlineRow).join("")
+                  : `
+                    <div class="market-empty">
+                      No additional market headlines.
+                    </div>
+                  `
+              }
+            </div>
+
+          </div>
+
+
+          <div>
+
+            ${marketSectionHeader(
+              "Global → India",
+              "TRANSMISSION WATCH"
+            )}
+
+            <div class="market-compact-list">
+              ${
+                globalStories.length
+                  ? globalStories.map(marketHeadlineRow).join("")
+                  : `
+                    <div class="market-empty">
+                      No major global transmission story right now.
+                    </div>
+                  `
+              }
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <!-- IPO -->
+
+      ${renderIPOSection()}
+
+
+      <!-- STOCKS & COMPANIES -->
 
       ${
-        events.length
+        companyStories.length
           ? `
-            <div class="story-list">
+            <section class="market-section">
 
-              ${events.map(event => `
-                <article class="story-card">
+              ${marketSectionHeader(
+                "Stocks & Companies",
+                "CORPORATE INDIA"
+              )}
 
-                  <div class="story-topline">
+              <div class="company-news-layout">
 
-                    <span class="importance-label significant">
-                      ${escapeHtml(event.type || "EVENT")}
-                    </span>
+                <div>
+                  ${marketSecondary(companyStories[0])}
+                </div>
 
-                    <span class="category-label">
-                      ${escapeHtml(event.date || "")}
-                    </span>
+                <div class="market-compact-list">
+                  ${companyStories
+                    .slice(1, 8)
+                    .map(marketHeadlineRow)
+                    .join("")}
+                </div>
 
-                  </div>
+              </div>
 
-                  <h3 class="story-title">
-                    ${escapeHtml(event.title || "")}
-                  </h3>
-
-                  ${
-                    event.why_it_matters
-                      ? `
-                        <p class="story-summary">
-                          ${escapeHtml(event.why_it_matters)}
-                        </p>
-                      `
-                      : ""
-                  }
-
-                </article>
-              `).join("")}
-
-            </div>
+            </section>
           `
-          : `
-            <div class="empty-state">
-              <h2>No verified events loaded yet.</h2>
-              <p>
-                The calendar won't guess dates from headlines.
-              </p>
-            </div>
-          `
+          : ""
       }
 
-    </section>
+
+      <!-- MUTUAL FUNDS -->
+
+      ${renderMutualFundSection()}
+
+
+      <!-- INVESTOR CONVERSATION -->
+
+      ${renderInvestorConversationSection()}
+
+
+      <!-- EDITORIAL NOTE -->
+
+      <footer class="markets-editorial-note">
+
+        <strong>About this page</strong>
+
+        <p>
+          Markets prioritises material market, corporate,
+          IPO and mutual-fund developments. Routine price
+          movements and market chatter are deliberately
+          downranked. Community discussion, when available,
+          is labelled separately from reported facts.
+        </p>
+
+      </footer>
+
+    </div>
   `;
 }
 
 
-/* =========================================================
-   NORMAL CATEGORY
-========================================================= */
+/* ============================================================
+   GENERIC VIEW
+============================================================ */
 
-function showCategory(category) {
-  state.currentView = "category";
-  state.currentCategory = category;
+function setPageHeader(title, description) {
+  if (els.pageTitle) els.pageTitle.textContent = title;
+  if (els.pageDescription) els.pageDescription.textContent = description;
+}
 
-  closeMenu();
+function renderViewHeader(kicker, title, description = "") {
+  return `
+    <div class="view-header">
 
-  setPageHeader(
-    displayCategory(category),
-    `Latest significant developments in ${displayCategory(category)}.`
-  );
+      <div class="section-kicker">
+        ${escapeHtml(kicker)}
+      </div>
 
-  const stories = state.clusters
-    .filter(story => story.category === category)
-    .sort((a, b) =>
-      Number(b.importance || 0) - Number(a.importance || 0)
-    );
+      <h2>${escapeHtml(title)}</h2>
 
-  renderSingleView(
-    displayCategory(category),
-    stories,
-    `${stories.length} developments`
-  );
+      ${
+        description
+          ? `<p>${escapeHtml(description)}</p>`
+          : ""
+      }
+
+    </div>
+  `;
+}
+
+function renderSingleView(title, stories, description = "") {
+  els.contentView.innerHTML = `
+    <section class="content-section">
+
+      ${renderViewHeader(
+        "DAILY INTELLIGENCE",
+        title,
+        description
+      )}
+
+      <div id="singleStoryList"></div>
+
+    </section>
+  `;
+
+  renderStoryList($("singleStoryList"), stories);
 }
 
 
-/* =========================================================
+/* ============================================================
    THE BRIEF
-========================================================= */
+============================================================ */
 
 function renderBrief() {
   state.currentView = "brief";
@@ -1110,6 +1132,7 @@ function renderBrief() {
     <section class="content-section">
 
       <div class="section-heading">
+
         <div>
           <div class="section-kicker">MUST KNOW</div>
           <h2>The Brief</h2>
@@ -1118,45 +1141,61 @@ function renderBrief() {
         <span class="section-count">
           ${stories.length}
         </span>
+
       </div>
 
       <div id="briefStories"></div>
 
     </section>
 
+
     <section class="content-section">
 
       <div class="section-heading">
+
         <div>
           <div class="section-kicker">THE FILTER</div>
           <h2>Behind the Brief</h2>
         </div>
+
       </div>
 
       <div class="market-pulse">
 
         <div class="market-pulse-item">
           <div class="market-pulse-name">SCANNED</div>
+
           <div class="market-pulse-value">
             ${state.data?.article_count || 0}
           </div>
-          <div class="market-pulse-note">useful articles</div>
+
+          <div class="market-pulse-note">
+            useful articles
+          </div>
         </div>
 
         <div class="market-pulse-item">
           <div class="market-pulse-name">STORIES</div>
+
           <div class="market-pulse-value">
             ${state.data?.cluster_count || 0}
           </div>
-          <div class="market-pulse-note">clustered events</div>
+
+          <div class="market-pulse-note">
+            clustered events
+          </div>
         </div>
 
         <div class="market-pulse-item">
           <div class="market-pulse-name">FILTERED</div>
+
           <div class="market-pulse-value">
             ${state.data?.noise_filtered || 0}
           </div>
-          <div class="market-pulse-note">low-signal items</div>
+
+          <div class="market-pulse-note">
+            low-signal items
+          </div>
         </div>
 
       </div>
@@ -1168,12 +1207,44 @@ function renderBrief() {
 }
 
 
-/* =========================================================
-   OTHER EXISTING VIEWS
-========================================================= */
+/* ============================================================
+   NORMAL CATEGORY
+============================================================ */
+
+function showCategory(category) {
+  state.currentView = "category";
+  state.currentCategory = category;
+
+  closeMenu();
+
+  const stories = sortByImportance(
+    state.clusters.filter(story =>
+      story.category === category
+    )
+  );
+
+  setPageHeader(
+    displayCategory(category),
+    `Latest significant developments in ${displayCategory(category)}.`
+  );
+
+  renderSingleView(
+    displayCategory(category),
+    stories,
+    `${stories.length} developments`
+  );
+}
+
+
+/* ============================================================
+   SINCE LAST CHECK
+============================================================ */
 
 function renderSince() {
   state.currentView = "since";
+  state.currentCategory = null;
+
+  closeMenu();
 
   const stories = state.previousVisit
     ? state.clusters.filter(isNewSinceVisit)
@@ -1191,21 +1262,42 @@ function renderSince() {
   );
 }
 
+
+/* ============================================================
+   DEVELOPING
+============================================================ */
+
 function renderDeveloping() {
   state.currentView = "developing";
+  state.currentCategory = null;
 
-  const stories = state.clusters.filter(x => x.is_developing === true);
+  closeMenu();
+
+  const stories = state.clusters.filter(
+    story => story.is_developing === true
+  );
 
   setPageHeader(
     "Developing",
     "Stories receiving material new information."
   );
 
-  renderSingleView("Developing", stories);
+  renderSingleView(
+    "Developing",
+    stories
+  );
 }
+
+
+/* ============================================================
+   SAVED
+============================================================ */
 
 function renderSaved() {
   state.currentView = "saved";
+  state.currentCategory = null;
+
+  closeMenu();
 
   const stories = state.clusters.filter(isSaved);
 
@@ -1214,18 +1306,26 @@ function renderSaved() {
     "Stories you've kept for later."
   );
 
-  renderSingleView("Saved", stories);
+  renderSingleView(
+    "Saved",
+    stories
+  );
 }
 
 
-/* =========================================================
+/* ============================================================
    SOURCE SHEET
-========================================================= */
+============================================================ */
 
 function openSources(story) {
   const articles = story.articles || [];
 
-  els.sheetTitle.textContent = story.title || "Coverage";
+  if (!els.sheetTitle || !els.sheetSources || !els.sourceSheet) {
+    return;
+  }
+
+  els.sheetTitle.textContent =
+    story.title || "Coverage";
 
   els.sheetSources.innerHTML = (
     articles.length
@@ -1243,6 +1343,7 @@ function openSources(story) {
       target="_blank"
       rel="noopener noreferrer"
     >
+
       <div class="sheet-source-name">
         ${escapeHtml(article.source || "Source")}
       </div>
@@ -1254,10 +1355,12 @@ function openSources(story) {
       <div class="sheet-source-time">
         ${escapeHtml(timeAgo(article.published_at))}
       </div>
+
     </a>
   `).join("");
 
   els.sourceSheet.classList.remove("hidden");
+
   document.body.style.overflow = "hidden";
 }
 
@@ -1267,9 +1370,9 @@ function closeSources() {
 }
 
 
-/* =========================================================
-   MENU / THEME / SEARCH
-========================================================= */
+/* ============================================================
+   MENU
+============================================================ */
 
 function openMenu() {
   document.body.classList.add("menu-open");
@@ -1278,6 +1381,11 @@ function openMenu() {
 function closeMenu() {
   document.body.classList.remove("menu-open");
 }
+
+
+/* ============================================================
+   THEME
+============================================================ */
 
 function applyTheme() {
   const stored = localStorage.getItem("di_theme");
@@ -1290,19 +1398,36 @@ function applyTheme() {
         : "light"
     );
 
-  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.setAttribute(
+    "data-theme",
+    theme
+  );
 }
 
 function toggleTheme() {
   const current =
     document.documentElement.getAttribute("data-theme");
 
-  const next = current === "dark" ? "light" : "dark";
+  const next =
+    current === "dark"
+      ? "light"
+      : "dark";
 
-  document.documentElement.setAttribute("data-theme", next);
+  document.documentElement.setAttribute(
+    "data-theme",
+    next
+  );
 
-  localStorage.setItem("di_theme", next);
+  localStorage.setItem(
+    "di_theme",
+    next
+  );
 }
+
+
+/* ============================================================
+   SEARCH
+============================================================ */
 
 function searchStories(query) {
   const q = query.trim().toLowerCase();
@@ -1326,93 +1451,110 @@ function searchStories(query) {
   );
 
   state.currentView = "search";
+  state.currentCategory = null;
 
   setPageHeader(
     "Search",
     `${results.length} results for “${query}”.`
   );
 
-  renderSingleView(`Results for “${query}”`, results);
+  renderSingleView(
+    `Results for “${query}”`,
+    results
+  );
 }
 
 
-/* =========================================================
-   NAVIGATION EVENTS
-========================================================= */
+/* ============================================================
+   NAVIGATION
+============================================================ */
 
 function wireNavigation() {
-  document.querySelectorAll(".nav-item").forEach(button => {
+  document
+    .querySelectorAll(".nav-item")
+    .forEach(button => {
 
-    button.addEventListener("click", () => {
+      button.addEventListener("click", () => {
 
-      const category = button.dataset.category;
-      const view = button.dataset.view;
-      const market = button.dataset.marketView;
+        const category = button.dataset.category;
+        const view = button.dataset.view;
+        const markets = button.dataset.marketHome;
 
-      if (category) {
-        showCategory(category);
-        return;
-      }
+        if (markets === "true") {
+          renderMarkets();
+          return;
+        }
 
-      if (market === "market-brief") renderMarketBrief();
-      if (market === "ipo-open") renderIPOView("ipo-open");
-      if (market === "ipo-upcoming") renderIPOView("ipo-upcoming");
-      if (market === "ipo-listed") renderIPOView("ipo-listed");
-      if (market === "stocks-focus") renderStocksFocus();
-      if (market === "investor-conversation") renderInvestorConversation();
-      if (market === "mutual-funds") renderMutualFunds();
-      if (market === "fund-flows") renderFundFlows();
-      if (market === "market-calendar") renderMarketCalendar();
+        if (category) {
+          showCategory(category);
+          return;
+        }
 
-      if (view === "brief") renderBrief();
-      if (view === "since") renderSince();
-      if (view === "developing") renderDeveloping();
-      if (view === "saved") renderSaved();
+        if (view === "brief") {
+          renderBrief();
+          return;
+        }
+
+        if (view === "since") {
+          renderSince();
+          return;
+        }
+
+        if (view === "developing") {
+          renderDeveloping();
+          return;
+        }
+
+        if (view === "saved") {
+          renderSaved();
+          return;
+        }
+
+      });
     });
-  });
 }
 
 
-/* =========================================================
-   RENDER CURRENT
-========================================================= */
+/* ============================================================
+   CURRENT VIEW
+============================================================ */
 
 function renderCurrentView() {
-  if (state.currentView === "brief") return renderBrief();
+  if (state.currentView === "markets") {
+    return renderMarkets();
+  }
 
   if (state.currentView === "category") {
     return showCategory(state.currentCategory);
   }
 
-  if (state.currentView === "market-brief") return renderMarketBrief();
-  if (state.currentView === "ipo-open") return renderIPOView("ipo-open");
-  if (state.currentView === "ipo-upcoming") return renderIPOView("ipo-upcoming");
-  if (state.currentView === "ipo-listed") return renderIPOView("ipo-listed");
-  if (state.currentView === "stocks-focus") return renderStocksFocus();
-
-  if (state.currentView === "investor-conversation") {
-    return renderInvestorConversation();
+  if (state.currentView === "since") {
+    return renderSince();
   }
 
-  if (state.currentView === "mutual-funds") return renderMutualFunds();
-  if (state.currentView === "fund-flows") return renderFundFlows();
-  if (state.currentView === "market-calendar") return renderMarketCalendar();
+  if (state.currentView === "developing") {
+    return renderDeveloping();
+  }
 
-  if (state.currentView === "saved") return renderSaved();
+  if (state.currentView === "saved") {
+    return renderSaved();
+  }
 
-  renderBrief();
+  return renderBrief();
 }
 
 
-/* =========================================================
-   LOAD
-========================================================= */
+/* ============================================================
+   LOAD DATA
+============================================================ */
 
 async function loadData() {
   try {
     const response = await fetch(
       `${DATA_URL}?v=${Date.now()}`,
-      { cache: "no-store" }
+      {
+        cache: "no-store"
+      }
     );
 
     if (!response.ok) {
@@ -1422,12 +1564,29 @@ async function loadData() {
     const data = await response.json();
 
     state.data = data;
-    state.clusters = Array.isArray(data.clusters) ? data.clusters : [];
-    state.top = Array.isArray(data.top) ? data.top : [];
-    state.markets = data.markets || {};
+
+    state.clusters =
+      Array.isArray(data.clusters)
+        ? data.clusters
+        : [];
+
+    state.top =
+      Array.isArray(data.top)
+        ? data.top
+        : [];
+
+    state.markets =
+      data.markets || {};
 
     if (els.todayDate) {
-      els.todayDate.textContent = longToday().toUpperCase();
+      els.todayDate.textContent =
+        new Intl.DateTimeFormat("en-IN", {
+          weekday: "long",
+          day: "numeric",
+          month: "long"
+        })
+          .format(new Date())
+          .toUpperCase();
     }
 
     if (els.lastUpdated) {
@@ -1435,8 +1594,13 @@ async function loadData() {
         `Updated ${timeAgo(data.generated_at)}`;
     }
 
-    const sources = data.sources || [];
-    const healthy = sources.filter(source => source.ok).length;
+    const sources =
+      Array.isArray(data.sources)
+        ? data.sources
+        : [];
+
+    const healthy =
+      sources.filter(source => source.ok).length;
 
     if (els.sidebarStatus) {
       els.sidebarStatus.textContent =
@@ -1456,60 +1620,113 @@ async function loadData() {
 
     renderBrief();
 
-    localStorage.setItem("di_last_visit", state.currentVisit);
+    localStorage.setItem(
+      "di_last_visit",
+      state.currentVisit
+    );
 
   } catch (error) {
+
     console.error(error);
 
     els.contentView.innerHTML = `
       <div class="empty-state">
-        <h2>The briefing couldn't load.</h2>
-        <p>Refresh again in a moment.</p>
+
+        <h2>
+          The briefing couldn't load.
+        </h2>
+
+        <p>
+          Refresh again in a moment.
+        </p>
+
       </div>
     `;
   }
 }
 
 
-/* =========================================================
+/* ============================================================
    EVENTS
-========================================================= */
+============================================================ */
 
 applyTheme();
+
 installMarketsNavigation();
+
 wireNavigation();
 
-els.openMenu?.addEventListener("click", openMenu);
-els.closeMenu?.addEventListener("click", closeMenu);
-els.menuOverlay?.addEventListener("click", closeMenu);
+els.openMenu?.addEventListener(
+  "click",
+  openMenu
+);
 
-els.themeButton?.addEventListener("click", toggleTheme);
+els.closeMenu?.addEventListener(
+  "click",
+  closeMenu
+);
 
-els.viewSinceButton?.addEventListener("click", renderSince);
+els.menuOverlay?.addEventListener(
+  "click",
+  closeMenu
+);
 
-els.searchButton?.addEventListener("click", () => {
-  els.searchPanel?.classList.toggle("hidden");
-  els.searchInput?.focus();
-});
+els.themeButton?.addEventListener(
+  "click",
+  toggleTheme
+);
 
-els.closeSearch?.addEventListener("click", () => {
-  els.searchPanel?.classList.add("hidden");
-  if (els.searchInput) els.searchInput.value = "";
-  renderBrief();
-});
+els.viewSinceButton?.addEventListener(
+  "click",
+  renderSince
+);
 
-els.searchInput?.addEventListener("input", event => {
-  searchStories(event.target.value);
-});
-
-els.sheetBackdrop?.addEventListener("click", closeSources);
-els.closeSheet?.addEventListener("click", closeSources);
-
-document.addEventListener("keydown", event => {
-  if (event.key === "Escape") {
-    closeMenu();
-    closeSources();
+els.searchButton?.addEventListener(
+  "click",
+  () => {
+    els.searchPanel?.classList.toggle("hidden");
+    els.searchInput?.focus();
   }
-});
+);
+
+els.closeSearch?.addEventListener(
+  "click",
+  () => {
+    els.searchPanel?.classList.add("hidden");
+
+    if (els.searchInput) {
+      els.searchInput.value = "";
+    }
+
+    renderBrief();
+  }
+);
+
+els.searchInput?.addEventListener(
+  "input",
+  event => {
+    searchStories(event.target.value);
+  }
+);
+
+els.sheetBackdrop?.addEventListener(
+  "click",
+  closeSources
+);
+
+els.closeSheet?.addEventListener(
+  "click",
+  closeSources
+);
+
+document.addEventListener(
+  "keydown",
+  event => {
+    if (event.key === "Escape") {
+      closeMenu();
+      closeSources();
+    }
+  }
+);
 
 loadData();
