@@ -5,7 +5,7 @@
 
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   >
 
   <meta
@@ -22,7 +22,10 @@
 
 <body>
 
-  <!-- MOBILE OVERLAY -->
+  <!-- ======================================================
+       MOBILE MENU OVERLAY
+       ====================================================== -->
+
   <div
     id="menuOverlay"
     class="menu-overlay"
@@ -30,7 +33,10 @@
   ></div>
 
 
-  <!-- LEFT NAVIGATION -->
+  <!-- ======================================================
+       DESKTOP / MOBILE DRAWER NAVIGATION
+       ====================================================== -->
+
   <aside
     id="sidebar"
     class="sidebar"
@@ -39,14 +45,18 @@
 
     <div class="sidebar-top">
 
-      <div class="sidebar-brand">
+      <button
+        class="sidebar-brand"
+        data-view="brief"
+        aria-label="Go to The Brief"
+      >
         <span class="brand-mark">DI</span>
 
-        <div>
-          <div class="brand-name">Daily Intelligence</div>
-          <div class="brand-subtitle">Signal over noise</div>
-        </div>
-      </div>
+        <span class="brand-copy">
+          <span class="brand-name">Daily Intelligence</span>
+          <span class="brand-subtitle">Signal over noise.</span>
+        </span>
+      </button>
 
       <button
         id="closeMenu"
@@ -61,115 +71,239 @@
 
     <nav class="navigation">
 
+      <!-- TODAY -->
       <div class="nav-group">
+
         <div class="nav-label">Today</div>
 
-        <button class="nav-item active" data-view="brief">
-          The Brief
+        <button
+          class="nav-item active"
+          data-view="brief"
+        >
+          <span class="nav-icon" aria-hidden="true">⌂</span>
+          <span>The Brief</span>
         </button>
 
-        <button class="nav-item" data-view="since">
-          Since Last Check
+        <button
+          class="nav-item"
+          data-view="since"
+        >
+          <span class="nav-icon" aria-hidden="true">◷</span>
+          <span>Since Last Check</span>
         </button>
 
-        <button class="nav-item" data-view="developing">
-          Developing
+        <button
+          class="nav-item"
+          data-view="developing"
+        >
+          <span class="nav-icon" aria-hidden="true">ϟ</span>
+          <span>Developing</span>
         </button>
+
       </div>
 
 
+      <!-- INDIA -->
       <div class="nav-group">
+
         <div class="nav-label">India</div>
 
-        <button class="nav-item" data-category="India">
-          India
+        <button
+          class="nav-item"
+          data-category="India"
+        >
+          <span class="nav-icon" aria-hidden="true">◇</span>
+          <span>India</span>
         </button>
 
-        <button class="nav-item" data-category="Indian Politics">
-          Indian Politics
+        <button
+          class="nav-item"
+          data-category="Indian Politics"
+        >
+          <span class="nav-icon" aria-hidden="true">▤</span>
+          <span>Indian Politics</span>
         </button>
 
-        <button class="nav-item" data-category="Macro Economics">
-          Economy &amp; Policy
+        <button
+          class="nav-item"
+          data-category="Macro Economics"
+        >
+          <span class="nav-icon" aria-hidden="true">▥</span>
+          <span>Economy &amp; Policy</span>
         </button>
 
-        <button class="nav-item" data-category="Business & Micro">
-          Business
+        <button
+          class="nav-item"
+          data-category="Business & Micro"
+        >
+          <span class="nav-icon" aria-hidden="true">▧</span>
+          <span>Business</span>
         </button>
+
       </div>
 
 
+      <!-- MARKETS -->
       <div class="nav-group">
+
+        <div class="nav-label">Markets</div>
+
+        <button
+          class="nav-item"
+          data-category="Indian Markets"
+          data-view="markets"
+        >
+          <span class="nav-icon" aria-hidden="true">⌁</span>
+          <span>Markets</span>
+        </button>
+
+      </div>
+
+
+      <!-- WORLD -->
+      <div class="nav-group">
+
         <div class="nav-label">World</div>
 
-        <button class="nav-item" data-category="World">
-          World
+        <button
+          class="nav-item"
+          data-category="World"
+        >
+          <span class="nav-icon" aria-hidden="true">◎</span>
+          <span>World</span>
         </button>
 
-        <button class="nav-item" data-category="Geopolitics">
-          Geopolitics
+        <button
+          class="nav-item"
+          data-category="Geopolitics"
+        >
+          <span class="nav-icon" aria-hidden="true">◆</span>
+          <span>Geopolitics</span>
         </button>
 
-        <button class="nav-item" data-category="World Politics">
-          World Politics
+        <button
+          class="nav-item"
+          data-category="World Politics"
+        >
+          <span class="nav-icon" aria-hidden="true">◉</span>
+          <span>World Politics</span>
         </button>
+
       </div>
 
 
+      <!-- TECH -->
       <div class="nav-group">
+
         <div class="nav-label">Tech &amp; Science</div>
 
-        <button class="nav-item" data-category="AI">
-          AI
+        <button
+          class="nav-item"
+          data-category="AI"
+        >
+          <span class="nav-icon" aria-hidden="true">✣</span>
+          <span>AI</span>
         </button>
 
-        <button class="nav-item" data-category="Technology">
-          Technology
+        <button
+          class="nav-item"
+          data-category="Technology"
+        >
+          <span class="nav-icon" aria-hidden="true">▱</span>
+          <span>Technology</span>
         </button>
 
-        <button class="nav-item" data-category="Science & Climate">
-          Science &amp; Climate
+        <button
+          class="nav-item"
+          data-category="Science & Climate"
+        >
+          <span class="nav-icon" aria-hidden="true">♧</span>
+          <span>Science &amp; Climate</span>
         </button>
+
       </div>
 
 
+      <!-- MORE -->
       <div class="nav-group">
+
         <div class="nav-label">More</div>
 
-        <button class="nav-item" data-category="The Ken">
-          The Ken
+        <button
+          class="nav-item"
+          data-category="The Ken"
+        >
+          <span class="nav-icon" aria-hidden="true">◉</span>
+          <span>The Ken</span>
         </button>
 
-        <button class="nav-item" data-view="saved">
-          Saved
+        <button
+          class="nav-item"
+          data-view="saved"
+        >
+          <span class="nav-icon" aria-hidden="true">♡</span>
+          <span>Saved</span>
         </button>
 
-        <button class="nav-item" data-view="archives">
-          Archives
+        <button
+          class="nav-item"
+          data-view="archives"
+        >
+          <span class="nav-icon" aria-hidden="true">▣</span>
+          <span>Archives</span>
         </button>
 
-        <button class="nav-item" data-view="sources">
-          Sources
+        <button
+          class="nav-item"
+          data-view="sources"
+        >
+          <span class="nav-icon" aria-hidden="true">◫</span>
+          <span>Sources</span>
         </button>
+
       </div>
 
     </nav>
 
 
     <div class="sidebar-footer">
+
+      <button
+        id="sidebarThemeButton"
+        class="sidebar-theme-button"
+        type="button"
+      >
+        <span aria-hidden="true">◐</span>
+        <span>Dark mode</span>
+      </button>
+
       <div class="sidebar-status">
-        <span id="sidebarHealthDot" class="status-dot"></span>
-        <span id="sidebarStatus">Loading sources…</span>
+        <span
+          id="sidebarHealthDot"
+          class="status-dot"
+        ></span>
+
+        <span id="sidebarStatus">
+          Loading sources…
+        </span>
       </div>
+
     </div>
 
   </aside>
 
 
-  <!-- PAGE -->
+  <!-- ======================================================
+       APPLICATION SHELL
+       ====================================================== -->
+
   <div class="page-shell">
 
-    <!-- HEADER -->
+
+    <!-- ====================================================
+         TOP BAR
+         ==================================================== -->
+
     <header class="topbar">
 
       <div class="topbar-left">
@@ -185,90 +319,173 @@
           <span></span>
         </button>
 
-        <div class="mobile-brand">
-          Daily Intelligence
-        </div>
+
+        <button
+          class="mobile-brand"
+          data-view="brief"
+          aria-label="Go to The Brief"
+        >
+          <span class="mobile-brand-mark">DI</span>
+
+          <span class="mobile-brand-copy">
+            <strong>Daily Intelligence</strong>
+            <small>Signal over noise.</small>
+          </span>
+        </button>
 
       </div>
 
 
-      <div class="topbar-actions">
-
-        <button
-          id="searchButton"
-          class="icon-button"
-          aria-label="Search"
-          title="Search"
+      <!-- DESKTOP SEARCH TRIGGER -->
+      <button
+        id="desktopSearchTrigger"
+        class="desktop-search-trigger"
+        type="button"
+        aria-label="Search Daily Intelligence"
+      >
+        <span
+          class="search-trigger-icon"
+          aria-hidden="true"
         >
           ⌕
-        </button>
+        </span>
 
-        <button
-          id="themeButton"
-          class="icon-button"
-          aria-label="Toggle dark mode"
-          title="Dark mode"
-        >
-          ◐
-        </button>
+        <span>
+          Search topics, companies, people, countries…
+        </span>
+      </button>
+
+
+      <div class="topbar-meta">
+
+        <div class="topbar-date-block">
+          <span id="topbarDate"></span>
+          <span id="topbarUpdated"></span>
+        </div>
+
+        <div class="topbar-actions">
+
+          <button
+            id="searchButton"
+            class="icon-button"
+            aria-label="Search"
+            title="Search"
+          >
+            ⌕
+          </button>
+
+          <button
+            id="themeButton"
+            class="icon-button"
+            aria-label="Toggle dark mode"
+            title="Dark mode"
+          >
+            ◐
+          </button>
+
+        </div>
 
       </div>
 
     </header>
 
 
-    <!-- SEARCH -->
-    <div id="searchPanel" class="search-panel hidden">
+    <!-- ====================================================
+         SEARCH PANEL
+         ==================================================== -->
+
+    <div
+      id="searchPanel"
+      class="search-panel hidden"
+    >
+
       <div class="search-inner">
+
+        <span
+          class="search-panel-icon"
+          aria-hidden="true"
+        >
+          ⌕
+        </span>
 
         <input
           id="searchInput"
           type="search"
-          placeholder="Search today's intelligence…"
+          placeholder="Search topics, companies, people, countries…"
           autocomplete="off"
         >
 
-        <button id="closeSearch" class="text-button">
+        <button
+          id="closeSearch"
+          class="text-button"
+        >
           Close
         </button>
 
       </div>
+
     </div>
 
 
-    <!-- MAIN -->
+    <!-- ====================================================
+         MAIN
+         ==================================================== -->
+
     <main class="main-content">
 
-      <!-- DATE / STATUS -->
+
+      <!-- ==================================================
+           PAGE HEADER
+           ================================================== -->
+
       <section class="brief-header">
 
-        <div>
-          <div id="todayDate" class="eyebrow">
-            TODAY
+        <div class="brief-header-copy">
+
+          <div
+            id="todayDate"
+            class="eyebrow"
+          >
+            TODAY'S BRIEF
           </div>
 
           <h1 id="pageTitle">
             The Brief
           </h1>
 
-          <p id="pageDescription" class="page-description">
+          <p
+            id="pageDescription"
+            class="page-description"
+          >
             What matters today, without the noise.
           </p>
+
         </div>
 
 
         <div class="update-status">
-          <span id="healthDot" class="status-dot"></span>
+
+          <span
+            id="healthDot"
+            class="status-dot"
+          ></span>
 
           <span id="lastUpdated">
             Updating…
           </span>
+
         </div>
 
       </section>
 
 
-      <!-- SINCE LAST CHECK -->
+      <!-- ==================================================
+           SINCE LAST CHECK
+           Existing JS hook preserved.
+           CSS can move this into the contextual rail on
+           desktop while keeping it inline on mobile.
+           ================================================== -->
+
       <section
         id="sinceLastPanel"
         class="since-panel"
@@ -280,7 +497,10 @@
             SINCE YOU LAST CHECKED
           </div>
 
-          <div id="sinceSummary" class="since-summary">
+          <div
+            id="sinceSummary"
+            class="since-summary"
+          >
             Loading your briefing…
           </div>
 
@@ -296,23 +516,34 @@
       </section>
 
 
-      <!-- MAIN VIEW -->
+      <!-- ==================================================
+           CONTENT VIEW
+           ================================================== -->
+
       <section id="contentView">
 
-        <!-- THE BRIEF -->
+
+        <!-- ================================================
+             THE BRIEF
+             ================================================ -->
+
         <section
           id="briefSection"
-          class="content-section"
+          class="content-section brief-section"
         >
 
           <div class="section-heading">
 
             <div>
+
               <div class="section-kicker">
-                ESSENTIAL
+                TODAY'S BRIEF
               </div>
 
-              <h2>The Brief</h2>
+              <h2>
+                Developments worth your attention
+              </h2>
+
             </div>
 
             <span
@@ -325,7 +556,7 @@
 
           <div
             id="briefStories"
-            class="story-list"
+            class="story-list brief-story-grid"
           >
             <div class="loading-card">
               Building your briefing…
@@ -335,20 +566,25 @@
         </section>
 
 
-        <!-- DEVELOPING -->
+        <!-- ================================================
+             DEVELOPING
+             ================================================ -->
+
         <section
           id="developingSection"
-          class="content-section"
+          class="content-section developing-section"
         >
 
           <div class="section-heading">
 
             <div>
-              <div class="section-kicker">
-                ACTIVE STORIES
+
+              <div class="section-kicker developing-kicker">
+                DEVELOPING NOW
               </div>
 
               <h2>Developing</h2>
+
             </div>
 
             <span
@@ -367,20 +603,27 @@
         </section>
 
 
-        <!-- EXPLORE -->
+        <!-- ================================================
+             EXPLORE
+             ================================================ -->
+
         <section
           id="exploreSection"
-          class="content-section"
+          class="content-section explore-section"
         >
 
           <div class="section-heading">
+
             <div>
+
               <div class="section-kicker">
-                GO DEEPER
+                EXPLORE
               </div>
 
-              <h2>Explore</h2>
+              <h2>Explore by topic</h2>
+
             </div>
+
           </div>
 
 
@@ -394,24 +637,118 @@
       </section>
 
 
-      <!-- EMPTY STATE -->
+      <!-- ==================================================
+           EMPTY / LOW ACTIVITY STATE
+           ================================================== -->
+
       <section
         id="emptyState"
         class="empty-state hidden"
       >
 
-        <h2>Nothing here yet.</h2>
+        <div
+          class="empty-state-icon"
+          aria-hidden="true"
+        >
+          ◇
+        </div>
+
+        <h2>
+          No significant developments since your last briefing.
+        </h2>
 
         <p>
-          No stories currently match this view.
+          We're continuously scanning trusted sources.
+          If something important happens, it will appear here.
         </p>
 
+        <button
+          class="primary-button"
+          data-view="brief"
+        >
+          Back to The Brief
+        </button>
+
       </section>
+
+
+      <!-- ==================================================
+           CONTEXTUAL RAIL
+           Progressive enhancement:
+           app.js can populate these in the V6 JS step.
+           Until then they remain hidden.
+           ================================================== -->
+
+      <aside
+        id="contextRail"
+        class="context-rail hidden"
+        aria-label="Briefing context"
+      >
+
+        <section
+          id="glancePanel"
+          class="context-card glance-card hidden"
+        >
+
+          <div class="context-card-heading">
+            <h2>Today at a glance</h2>
+          </div>
+
+          <div
+            id="glanceGrid"
+            class="glance-grid"
+          ></div>
+
+        </section>
+
+
+        <section
+          id="changedPanel"
+          class="context-card changed-card hidden"
+        >
+
+          <div class="context-card-heading">
+            <h2>What changed since you last checked?</h2>
+          </div>
+
+          <div id="changedSummary"></div>
+
+          <button
+            id="contextSinceButton"
+            class="context-link"
+            type="button"
+          >
+            View all since last check →
+          </button>
+
+        </section>
+
+
+        <section
+          id="topicPanel"
+          class="context-card topic-card hidden"
+        >
+
+          <div class="context-card-heading">
+            <h2>Explore by topic</h2>
+          </div>
+
+          <div
+            id="topicChips"
+            class="topic-chips"
+          ></div>
+
+        </section>
+
+      </aside>
 
     </main>
 
 
-    <!-- FOOTER -->
+    <!-- ====================================================
+         FOOTER
+         ==================================================== -->
+
     <footer class="footer">
 
       <div>
@@ -419,7 +756,7 @@
       </div>
 
       <div>
-        Built for signal, not scroll.
+        Better information. Less noise.
       </div>
 
     </footer>
@@ -427,7 +764,99 @@
   </div>
 
 
-  <!-- STORY SOURCE SHEET -->
+  <!-- ======================================================
+       MOBILE BOTTOM NAVIGATION
+       CSS will expose this only at mobile breakpoints.
+       ====================================================== -->
+
+  <nav
+    id="mobileBottomNav"
+    class="mobile-bottom-nav"
+    aria-label="Mobile navigation"
+  >
+
+    <button
+      class="mobile-nav-item active"
+      data-view="brief"
+    >
+      <span
+        class="mobile-nav-icon"
+        aria-hidden="true"
+      >
+        ⌂
+      </span>
+
+      <span>Brief</span>
+    </button>
+
+
+    <button
+      class="mobile-nav-item"
+      data-view="since"
+    >
+      <span
+        class="mobile-nav-icon"
+        aria-hidden="true"
+      >
+        ◷
+      </span>
+
+      <span>Since</span>
+    </button>
+
+
+    <button
+      class="mobile-nav-item"
+      data-view="developing"
+    >
+      <span
+        class="mobile-nav-icon"
+        aria-hidden="true"
+      >
+        ϟ
+      </span>
+
+      <span>Developing</span>
+    </button>
+
+
+    <button
+      class="mobile-nav-item"
+      data-view="explore"
+    >
+      <span
+        class="mobile-nav-icon"
+        aria-hidden="true"
+      >
+        ▦
+      </span>
+
+      <span>Explore</span>
+    </button>
+
+
+    <button
+      class="mobile-nav-item"
+      data-view="saved"
+    >
+      <span
+        class="mobile-nav-icon"
+        aria-hidden="true"
+      >
+        ♡
+      </span>
+
+      <span>Saved</span>
+    </button>
+
+  </nav>
+
+
+  <!-- ======================================================
+       STORY SOURCE SHEET
+       Existing JS hooks preserved.
+       ====================================================== -->
+
   <div
     id="sourceSheet"
     class="sheet hidden"
@@ -439,13 +868,16 @@
       class="sheet-backdrop"
     ></div>
 
+
     <div class="sheet-panel">
 
       <div class="sheet-handle"></div>
 
+
       <div class="sheet-header">
 
         <div>
+
           <div class="section-kicker">
             COVERAGE
           </div>
@@ -453,7 +885,9 @@
           <h3 id="sheetTitle">
             Sources
           </h3>
+
         </div>
+
 
         <button
           id="closeSheet"
@@ -476,10 +910,16 @@
   </div>
 
 
+  <!-- ======================================================
+       NO SCRIPT
+       ====================================================== -->
+
   <noscript>
+
     <div class="noscript">
       Daily Intelligence requires JavaScript to load the briefing.
     </div>
+
   </noscript>
 
 
