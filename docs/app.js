@@ -357,11 +357,32 @@
     `;
   }
 
-  function setHeader(eyebrow, title, sub) {
-    $('#eyebrow').textContent = eyebrow;
-    $('#pageTitle').textContent = title;
-    $('#pageDescription').textContent = sub;
+ function setHeader(eyebrow, title, sub) {
+  const eyebrowEl =
+    $('#eyebrow') ||
+    $('#todayDate') ||
+    $('.eyebrow');
+
+  const titleEl =
+    $('#pageTitle') ||
+    $('.brief-header h1');
+
+  const descriptionEl =
+    $('#pageDescription') ||
+    $('.page-description');
+
+  if (eyebrowEl) {
+    eyebrowEl.textContent = eyebrow || '';
   }
+
+  if (titleEl) {
+    titleEl.textContent = title || '';
+  }
+
+  if (descriptionEl) {
+    descriptionEl.textContent = sub || '';
+  }
+}
 
   function active(view, cat) {
     $$('[data-view], [data-category]').forEach(x => {
