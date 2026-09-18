@@ -8,23 +8,14 @@
 
   <title>Daily Intelligence</title>
 
-  <link rel="stylesheet" href="./styles.css?v=6.2">
+  <link rel="stylesheet" href="./styles.css?v=6.3">
 </head>
 
 <body>
 
-  <div
-    id="menuOverlay"
-    class="menu-overlay"
-    aria-hidden="true"
-  ></div>
+  <div id="menuOverlay" class="menu-overlay" aria-hidden="true"></div>
 
-
-  <aside
-    id="sidebar"
-    class="sidebar"
-    aria-label="Main navigation"
-  >
+  <aside id="sidebar" class="sidebar" aria-label="Main navigation">
 
     <div class="sidebar-top">
 
@@ -51,175 +42,63 @@
 
     </div>
 
-
     <nav class="navigation">
 
       <div class="nav-group">
-
         <div class="nav-label">Today</div>
 
-        <button
-          class="nav-item active"
-          data-view="brief"
-        >
-          <span class="nav-icon">⌂</span>
-          The Brief
+        <button class="nav-item active" data-view="brief">
+          <span class="nav-icon">⌂</span>The Brief
         </button>
 
-        <button
-          class="nav-item"
-          data-view="since"
-        >
-          <span class="nav-icon">↻</span>
-          Since Last Check
+        <button class="nav-item" data-view="since">
+          <span class="nav-icon">↻</span>Since Last Check
         </button>
 
-        <button
-          class="nav-item"
-          data-view="developing"
-        >
-          <span class="nav-icon">◉</span>
-          Developing
+        <button class="nav-item" data-view="developing">
+          <span class="nav-icon">◉</span>Developing
         </button>
-
       </div>
 
-
       <div class="nav-group">
-
         <div class="nav-label">India</div>
 
-        <button
-          class="nav-item"
-          data-category="India"
-        >
-          India
-        </button>
+        <button class="nav-item" data-category="India">India</button>
+        <button class="nav-item" data-category="Indian Politics">Indian Politics</button>
+        <button class="nav-item" data-category="Macro Economics">Economy &amp; Policy</button>
+        <button class="nav-item" data-category="Business & Micro">Business</button>
 
-        <button
-          class="nav-item"
-          data-category="Indian Politics"
-        >
-          Indian Politics
+        <button class="nav-item" data-view="markets">
+          <span class="nav-icon">↗</span>Markets
         </button>
-
-        <button
-          class="nav-item"
-          data-category="Macro Economics"
-        >
-          Economy &amp; Policy
-        </button>
-
-        <button
-          class="nav-item"
-          data-category="Business & Micro"
-        >
-          Business
-        </button>
-
-        <button
-          class="nav-item"
-          data-view="markets"
-        >
-          <span class="nav-icon">↗</span>
-          Markets
-        </button>
-
       </div>
 
-
       <div class="nav-group">
-
         <div class="nav-label">World</div>
 
-        <button
-          class="nav-item"
-          data-category="World"
-        >
-          World
-        </button>
-
-        <button
-          class="nav-item"
-          data-category="Geopolitics"
-        >
-          Geopolitics
-        </button>
-
-        <button
-          class="nav-item"
-          data-category="World Politics"
-        >
-          World Politics
-        </button>
-
+        <button class="nav-item" data-category="World">World</button>
+        <button class="nav-item" data-category="Geopolitics">Geopolitics</button>
+        <button class="nav-item" data-category="World Politics">World Politics</button>
       </div>
 
-
       <div class="nav-group">
-
         <div class="nav-label">Tech &amp; Science</div>
 
-        <button
-          class="nav-item"
-          data-category="AI"
-        >
-          AI
-        </button>
-
-        <button
-          class="nav-item"
-          data-category="Technology"
-        >
-          Technology
-        </button>
-
-        <button
-          class="nav-item"
-          data-category="Science & Climate"
-        >
-          Science &amp; Climate
-        </button>
-
+        <button class="nav-item" data-category="AI">AI</button>
+        <button class="nav-item" data-category="Technology">Technology</button>
+        <button class="nav-item" data-category="Science & Climate">Science &amp; Climate</button>
       </div>
 
-
       <div class="nav-group">
-
         <div class="nav-label">More</div>
 
-        <button
-          class="nav-item"
-          data-category="The Ken"
-        >
-          The Ken
-        </button>
-
-        <button
-          class="nav-item"
-          data-view="saved"
-        >
-          Saved
-        </button>
-
-        <button
-          class="nav-item"
-          data-view="archives"
-        >
-          Archives
-        </button>
-
-        <button
-          class="nav-item"
-          data-view="sources"
-        >
-          Sources
-        </button>
-
+        <button class="nav-item" data-category="The Ken">The Ken</button>
+        <button class="nav-item" data-view="saved">Saved</button>
+        <button class="nav-item" data-view="archives">Archives</button>
+        <button class="nav-item" data-view="sources">Sources</button>
       </div>
 
     </nav>
-
 
     <div class="sidebar-footer">
 
@@ -233,16 +112,8 @@
       </button>
 
       <div class="sidebar-status">
-
-        <span
-          id="sidebarHealthDot"
-          class="status-dot"
-        ></span>
-
-        <span id="sidebarStatus">
-          Loading sources…
-        </span>
-
+        <span id="sidebarHealthDot" class="status-dot"></span>
+        <span id="sidebarStatus">Loading sources…</span>
       </div>
 
     </div>
@@ -275,21 +146,12 @@
         </button>
 
         <div class="desktop-topbar-copy">
-
           <span id="topbarDate"></span>
-
-          <span class="topbar-divider">
-            •
-          </span>
-
-          <span id="topbarUpdated">
-            Updating…
-          </span>
-
+          <span class="topbar-divider">•</span>
+          <span id="topbarUpdated">Starting…</span>
         </div>
 
       </div>
-
 
       <div class="topbar-actions">
 
@@ -299,11 +161,7 @@
           type="button"
         >
           <span>⌕</span>
-
-          <span>
-            Search intelligence
-          </span>
-
+          <span>Search intelligence</span>
           <kbd>⌘K</kbd>
         </button>
 
@@ -328,16 +186,11 @@
     </header>
 
 
-    <div
-      id="searchPanel"
-      class="search-panel hidden"
-    >
+    <div id="searchPanel" class="search-panel hidden">
 
       <div class="search-inner">
 
-        <span class="search-glyph">
-          ⌕
-        </span>
+        <span class="search-glyph">⌕</span>
 
         <input
           id="searchInput"
@@ -346,10 +199,7 @@
           autocomplete="off"
         >
 
-        <button
-          id="closeSearch"
-          class="text-button"
-        >
+        <button id="closeSearch" class="text-button">
           Close
         </button>
 
@@ -366,10 +216,7 @@
 
           <div>
 
-            <div
-              id="todayDate"
-              class="eyebrow"
-            >
+            <div id="todayDate" class="eyebrow">
               TODAY
             </div>
 
@@ -377,36 +224,21 @@
               The Brief
             </h1>
 
-            <p
-              id="pageDescription"
-              class="page-description"
-            >
+            <p id="pageDescription" class="page-description">
               What matters today, without the noise.
             </p>
 
           </div>
 
-
           <div class="update-status">
-
-            <span
-              id="healthDot"
-              class="status-dot"
-            ></span>
-
-            <span id="lastUpdated">
-              Updating…
-            </span>
-
+            <span id="healthDot" class="status-dot"></span>
+            <span id="lastUpdated">Starting…</span>
           </div>
 
         </header>
 
 
-        <section
-          id="sinceLastPanel"
-          class="since-panel"
-        >
+        <section id="sinceLastPanel" class="since-panel">
 
           <div class="since-icon">
             ↻
@@ -418,45 +250,25 @@
               SINCE YOU LAST CHECKED
             </div>
 
-            <div
-              id="sinceSummary"
-              class="since-summary"
-            >
+            <div id="sinceSummary" class="since-summary">
               Building your catch-up…
             </div>
 
           </div>
 
-          <button
-            id="viewSinceButton"
-            class="quiet-button"
-          >
-            View changes
-            <span>→</span>
+          <button id="viewSinceButton" class="quiet-button">
+            View changes <span>→</span>
           </button>
 
         </section>
 
 
-        <section
-          id="contentView"
-          aria-live="polite"
-        >
+        <section id="contentView" aria-live="polite">
 
           <div class="skeleton-stack">
-
-            <div
-              class="skeleton hero-skeleton"
-            ></div>
-
-            <div
-              class="skeleton card-skeleton"
-            ></div>
-
-            <div
-              class="skeleton card-skeleton"
-            ></div>
-
+            <div class="skeleton hero-skeleton"></div>
+            <div class="skeleton card-skeleton"></div>
+            <div class="skeleton card-skeleton"></div>
           </div>
 
         </section>
@@ -464,68 +276,28 @@
       </section>
 
 
-      <aside
-        id="contextRail"
-        class="context-rail"
-      >
+      <aside id="contextRail" class="context-rail">
 
-        <section
-          id="glancePanel"
-          class="rail-panel"
-        >
-
-          <div class="rail-label">
-            AT A GLANCE
-          </div>
-
-          <div
-            id="glanceGrid"
-            class="glance-grid"
-          ></div>
-
+        <section id="glancePanel" class="rail-panel">
+          <div class="rail-label">AT A GLANCE</div>
+          <div id="glanceGrid" class="glance-grid"></div>
         </section>
 
+        <section id="changedPanel" class="rail-panel">
+          <div class="rail-label">YOUR CATCH-UP</div>
 
-        <section
-          id="changedPanel"
-          class="rail-panel"
-        >
-
-          <div class="rail-label">
-            YOUR CATCH-UP
-          </div>
-
-          <div
-            id="changedSummary"
-            class="rail-copy"
-          >
+          <div id="changedSummary" class="rail-copy">
             Loading…
           </div>
 
-          <button
-            id="contextSinceButton"
-            class="rail-link"
-          >
+          <button id="contextSinceButton" class="rail-link">
             See what changed →
           </button>
-
         </section>
 
-
-        <section
-          id="topicPanel"
-          class="rail-panel"
-        >
-
-          <div class="rail-label">
-            EXPLORE
-          </div>
-
-          <div
-            id="topicChips"
-            class="topic-chips"
-          ></div>
-
+        <section id="topicPanel" class="rail-panel">
+          <div class="rail-label">EXPLORE</div>
+          <div id="topicChips" class="topic-chips"></div>
         </section>
 
       </aside>
@@ -534,15 +306,8 @@
 
 
     <footer class="footer">
-
-      <span>
-        Daily Intelligence
-      </span>
-
-      <span>
-        Built for signal, not scroll.
-      </span>
-
+      <span>Daily Intelligence</span>
+      <span>Built for signal, not scroll.</span>
     </footer>
 
   </div>
@@ -554,42 +319,27 @@
     aria-label="Mobile navigation"
   >
 
-    <button
-      class="mobile-nav-item active"
-      data-view="brief"
-    >
+    <button class="mobile-nav-item active" data-view="brief">
       <span>⌂</span>
       <small>Brief</small>
     </button>
 
-    <button
-      class="mobile-nav-item"
-      data-view="since"
-    >
+    <button class="mobile-nav-item" data-view="since">
       <span>↻</span>
       <small>Since</small>
     </button>
 
-    <button
-      class="mobile-nav-item"
-      data-view="developing"
-    >
+    <button class="mobile-nav-item" data-view="developing">
       <span>◉</span>
       <small>Live</small>
     </button>
 
-    <button
-      class="mobile-nav-item"
-      data-view="markets"
-    >
+    <button class="mobile-nav-item" data-view="markets">
       <span>↗</span>
       <small>Markets</small>
     </button>
 
-    <button
-      class="mobile-nav-item"
-      data-view="explore"
-    >
+    <button class="mobile-nav-item" data-view="explore">
       <span>⊞</span>
       <small>Explore</small>
     </button>
@@ -603,10 +353,7 @@
     aria-hidden="true"
   >
 
-    <div
-      id="sheetBackdrop"
-      class="sheet-backdrop"
-    ></div>
+    <div id="sheetBackdrop" class="sheet-backdrop"></div>
 
     <div class="sheet-panel">
 
@@ -615,15 +362,8 @@
       <div class="sheet-header">
 
         <div>
-
-          <div class="section-kicker">
-            COVERAGE
-          </div>
-
-          <h3 id="sheetTitle">
-            Sources
-          </h3>
-
+          <div class="section-kicker">COVERAGE</div>
+          <h3 id="sheetTitle">Sources</h3>
         </div>
 
         <button
@@ -636,10 +376,7 @@
 
       </div>
 
-      <div
-        id="sheetSources"
-        class="sheet-sources"
-      ></div>
+      <div id="sheetSources" class="sheet-sources"></div>
 
     </div>
 
@@ -653,7 +390,85 @@
   </noscript>
 
 
-  <script src="./app.js?v=6.2"></script>
+  <!-- =====================================================
+       APP BOOT
+       ===================================================== -->
+
+  <script>
+    window.DI_BOOT_STARTED = false;
+
+    window.addEventListener("error", function (event) {
+      var status = document.getElementById("lastUpdated");
+      var topStatus = document.getElementById("topbarUpdated");
+      var sidebarStatus = document.getElementById("sidebarStatus");
+
+      var message = "JavaScript error";
+
+      if (event && event.message) {
+        message += ": " + event.message;
+      }
+
+      if (status) {
+        status.textContent = message;
+      }
+
+      if (topStatus) {
+        topStatus.textContent = message;
+      }
+
+      if (sidebarStatus) {
+        sidebarStatus.textContent = message;
+      }
+    });
+  </script>
+
+
+  <script
+    src="./app.js?v=6.3"
+    onload="
+      window.DI_BOOT_STARTED = true;
+      console.log('Daily Intelligence app.js loaded');
+    "
+    onerror="
+      document.getElementById('lastUpdated').textContent='ERROR: app.js failed to load';
+      document.getElementById('topbarUpdated').textContent='ERROR: app.js failed to load';
+      document.getElementById('sidebarStatus').textContent='ERROR: app.js failed to load';
+    "
+  ></script>
+
+
+  <script>
+    setTimeout(function () {
+
+      if (!window.DI_BOOT_STARTED) {
+        return;
+      }
+
+      var status = document.getElementById("lastUpdated");
+
+      if (
+        status &&
+        (
+          status.textContent === "Starting…" ||
+          status.textContent === "Updating…"
+        )
+      ) {
+        status.textContent = "ERROR: app.js loaded but did not initialise";
+
+        var topStatus = document.getElementById("topbarUpdated");
+        var sidebarStatus = document.getElementById("sidebarStatus");
+
+        if (topStatus) {
+          topStatus.textContent = "ERROR: app.js loaded but did not initialise";
+        }
+
+        if (sidebarStatus) {
+          sidebarStatus.textContent = "ERROR: app.js loaded but did not initialise";
+        }
+      }
+
+    }, 5000);
+  </script>
 
 </body>
 </html>
