@@ -4,13 +4,13 @@ import asyncio
 import hashlib
 import json
 import math
-import os
 import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from pathlib import Path
+from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
 
@@ -29,9 +29,29 @@ DATA.mkdir(parents=True, exist_ok=True)
 ARCHIVE.mkdir(parents=True, exist_ok=True)
 
 TZ = "Asia/Kolkata"
+
 LOOKBACK_HOURS = 96
 MAX_FEED_ITEMS = 35
-TOP_BRIEF_COUNT = 8
+
+MIN_CLUSTER_SCORE = 18
+BRIEF_MIN_SCORE = 43
+
+BRIEF_MIN = 5
+BRIEF_MAX = 8
+
+
+# ============================================================
+# GOOGLE NEWS RSS HELPER
+# Used only as an additional discovery feed.
+# The linked article remains the publisher's article.
+# ============================================================
+
+def google_news_feed(query):
+    return (
+        "https://news.google.com/rss/search?"
+        f"q={quote_plus(query)}"
+        "&hl=en-IN&gl=IN&ceid=IN:en"
+    )
 
 
 # ============================================================
@@ -39,342 +59,535 @@ TOP_BRIEF_COUNT = 8
 # ============================================================
 
 SOURCES = [
-    dict(
-        name="The Hindu India",
-        category="India",
-        url="https://www.thehindu.com/news/national/feeder/default.rss",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="Indian Express India",
-        category="India",
-        url="https://indianexpress.com/section/india/feed/",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="NDTV India",
-        category="India",
-        url="https://feeds.feedburner.com/ndtvnews-india-news",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="Indian Express Political Pulse",
-        category="Indian Politics",
-        url="https://indianexpress.com/section/political-pulse/feed/",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="Economic Times Politics",
-        category="Indian Politics",
-        url="https://economictimes.indiatimes.com/news/politics/rssfeeds/1977021501.cms",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="The Hindu Politics",
-        category="Indian Politics",
-        url="https://www.thehindu.com/news/national/politics/feeder/default.rss",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="BBC World",
-        category="World",
-        url="https://feeds.bbci.co.uk/news/world/rss.xml",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="AP Top Stories",
-        category="World",
-        url="https://feeds.apnews.com/apnews/topstories",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="Al Jazeera",
-        category="Geopolitics",
-        url="https://www.aljazeera.com/xml/rss/all.xml",
-        weight=4,
-        primary=False,
-    ),
-    dict(
-        name="BBC Politics",
-        category="World Politics",
-        url="https://feeds.bbci.co.uk/news/politics/rss.xml",
-        weight=4,
-        primary=False,
-    ),
-    dict(
-        name="Mint Economy",
-        category="Macro Economics",
-        url="https://www.livemint.com/rss/economy",
-        weight=4,
-        primary=False,
-    ),
-    dict(
-        name="RBI",
-        category="Macro Economics",
-        url="https://www.rbi.org.in/pressreleases_rss.aspx",
-        weight=5,
-        primary=True,
-    ),
-    dict(
-        name="Economic Times",
-        category="Business & Micro",
-        url="https://economictimes.indiatimes.com/rssfeedstopstories.cms",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="Mint Companies",
-        category="Business & Micro",
-        url="https://www.livemint.com/rss/companies",
-        weight=4,
-        primary=False,
-    ),
-    dict(
-        name="OpenAI",
-        category="AI",
-        url="https://openai.com/news/rss.xml",
-        weight=5,
-        primary=True,
-    ),
-    dict(
-        name="Google DeepMind",
-        category="AI",
-        url="https://deepmind.google/blog/rss.xml",
-        weight=5,
-        primary=True,
-    ),
-    dict(
-        name="TechCrunch AI",
-        category="AI",
-        url="https://techcrunch.com/category/artificial-intelligence/feed/",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="The Verge AI",
-        category="AI",
-        url="https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="MIT Technology Review AI",
-        category="AI",
-        url="https://www.technologyreview.com/topic/artificial-intelligence/feed/",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="Hugging Face",
-        category="AI",
-        url="https://huggingface.co/blog/feed.xml",
-        weight=4,
-        primary=True,
-    ),
-    dict(
-        name="The Verge",
-        category="Technology",
-        url="https://www.theverge.com/rss/index.xml",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="TechCrunch",
-        category="Technology",
-        url="https://techcrunch.com/feed/",
-        weight=3,
-        primary=False,
-    ),
-    dict(
-        name="Quanta Magazine",
-        category="Science & Climate",
-        url="https://www.quantamagazine.org/feed/",
-        weight=5,
-        primary=False,
-    ),
-    dict(
-        name="MIT News",
-        category="Science & Climate",
-        url="https://news.mit.edu/rss/feed",
-        weight=4,
-        primary=True,
-    ),
-    dict(
-        name="The Ken",
-        category="The Ken",
-        url="https://the-ken.com/feed/",
-        weight=5,
-        primary=False,
-    ),
+
+    # ---------------- INDIA ----------------
+
+    {
+        "name": "The Hindu India",
+        "category": "India",
+        "url": "https://www.thehindu.com/news/national/feeder/default.rss",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "Indian Express India",
+        "category": "India",
+        "url": "https://indianexpress.com/section/india/feed/",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "NDTV India",
+        "category": "India",
+        "url": "https://feeds.feedburner.com/ndtvnews-india-news",
+        "weight": 3,
+        "primary": False,
+    },
+
+
+    # ---------------- POLITICS ----------------
+
+    {
+        "name": "Indian Express Political Pulse",
+        "category": "Indian Politics",
+        "url": "https://indianexpress.com/section/political-pulse/feed/",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "The Hindu Politics",
+        "category": "Indian Politics",
+        "url": "https://www.thehindu.com/news/national/politics/feeder/default.rss",
+        "weight": 5,
+        "primary": False,
+    },
+
+
+    # ---------------- ECONOMY ----------------
+
+    {
+        "name": "Mint Economy",
+        "category": "Macro Economics",
+        "url": "https://www.livemint.com/rss/economy",
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "RBI",
+        "category": "Macro Economics",
+        "url": "https://www.rbi.org.in/pressreleases_rss.aspx",
+        "weight": 5,
+        "primary": True,
+    },
+
+
+    # ---------------- BUSINESS ----------------
+
+    {
+        "name": "Economic Times",
+        "category": "Business & Micro",
+        "url": "https://economictimes.indiatimes.com/rssfeedstopstories.cms",
+        "weight": 3,
+        "primary": False,
+    },
+
+    {
+        "name": "Mint Companies",
+        "category": "Business & Micro",
+        "url": "https://www.livemint.com/rss/companies",
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ---------------- INDIAN MARKETS ----------------
+
+    {
+        "name": "Indian Markets",
+        "category": "Indian Markets",
+        "url": google_news_feed(
+            'India stock market Nifty Sensex SEBI RBI FII DII '
+            'when:2d'
+        ),
+        "weight": 3,
+        "primary": False,
+    },
+
+    {
+        "name": "India Market Policy",
+        "category": "Indian Markets",
+        "url": google_news_feed(
+            'India markets SEBI NSE BSE IPO mutual funds '
+            'foreign investors when:2d'
+        ),
+        "weight": 3,
+        "primary": False,
+    },
+
+
+    # ---------------- COMPANIES / EARNINGS ----------------
+
+    {
+        "name": "India Companies & Earnings",
+        "category": "Companies & Earnings",
+        "url": google_news_feed(
+            'India company earnings results acquisition merger IPO '
+            'NSE BSE when:2d'
+        ),
+        "weight": 3,
+        "primary": False,
+    },
+
+
+    # ---------------- GLOBAL → INDIA ----------------
+
+    {
+        "name": "Global Market Drivers",
+        "category": "Global → India",
+        "url": google_news_feed(
+            'Federal Reserve US yields dollar crude oil OPEC China '
+            'global markets India when:2d'
+        ),
+        "weight": 3,
+        "primary": False,
+    },
+
+
+    # ---------------- WORLD ----------------
+
+    {
+        "name": "BBC World",
+        "category": "World",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "Al Jazeera",
+        "category": "Geopolitics",
+        "url": "https://www.aljazeera.com/xml/rss/all.xml",
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "BBC Politics",
+        "category": "World Politics",
+        "url": "https://feeds.bbci.co.uk/news/politics/rss.xml",
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ---------------- AI ----------------
+
+    {
+        "name": "OpenAI",
+        "category": "AI",
+        "url": "https://openai.com/news/rss.xml",
+        "weight": 5,
+        "primary": True,
+    },
+
+    {
+        "name": "Google DeepMind",
+        "category": "AI",
+        "url": "https://deepmind.google/blog/rss.xml",
+        "weight": 5,
+        "primary": True,
+    },
+
+    {
+        "name": "TechCrunch AI",
+        "category": "AI",
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "weight": 3,
+        "primary": False,
+    },
+
+    {
+        "name": "MIT Technology Review AI",
+        "category": "AI",
+        "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "Hugging Face",
+        "category": "AI",
+        "url": "https://huggingface.co/blog/feed.xml",
+        "weight": 4,
+        "primary": True,
+    },
+
+
+    # ---------------- TECHNOLOGY ----------------
+
+    {
+        "name": "The Verge",
+        "category": "Technology",
+        "url": "https://www.theverge.com/rss/index.xml",
+        "weight": 3,
+        "primary": False,
+    },
+
+    {
+        "name": "TechCrunch",
+        "category": "Technology",
+        "url": "https://techcrunch.com/feed/",
+        "weight": 3,
+        "primary": False,
+    },
+
+
+    # ---------------- SCIENCE ----------------
+
+    {
+        "name": "Quanta Magazine",
+        "category": "Science & Climate",
+        "url": "https://www.quantamagazine.org/feed/",
+        "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "MIT News",
+        "category": "Science & Climate",
+        "url": "https://news.mit.edu/rss/feed",
+        "weight": 4,
+        "primary": True,
+    },
+
+
+    # ---------------- THE KEN ----------------
+
+    {
+        "name": "The Ken",
+        "category": "The Ken",
+        "url": "https://the-ken.com/feed/",
+        "weight": 5,
+        "primary": False,
+    },
 ]
 
 
 # ============================================================
-# CLASSIFICATION
+# LANGUAGE RULES
 # ============================================================
+
+STOP = set("""
+the a an and or but if then of to in on for from by with at as
+is are was were be been this that these those it its their his
+her our your into over after before amid says said say new latest
+live update updates news report reports how why what who when where
+could would should will can may more about than up down out off
+today yesterday breaking exclusive explained india indian
+""".split())
+
 
 POLITICS = re.compile(
     r"\b("
     r"prime minister|president|parliament|lok sabha|rajya sabha|"
-    r"bjp|congress|election|electoral|minister|cabinet|government|"
-    r"opposition|coalition|chief minister|governor|legislation|"
-    r"political party|campaign|manifesto"
+    r"bjp|congress|election|electoral|minister|cabinet|opposition|"
+    r"coalition|chief minister|governor|legislation|political party|"
+    r"campaign|manifesto"
     r")\b",
     re.I,
 )
 
-INDIA = re.compile(
-    r"\b("
-    r"india|indian|delhi|mumbai|bengaluru|bangalore|hyderabad|"
-    r"chennai|kolkata|maharashtra|karnataka|tamil nadu|telangana|"
-    r"uttar pradesh|gujarat|rajasthan|kerala|modi|rbi"
-    r")\b",
-    re.I,
-)
 
-AI = re.compile(
+AI_RE = re.compile(
     r"\b("
     r"artificial intelligence|generative ai|machine learning|"
     r"large language model|llm|openai|chatgpt|anthropic|claude|"
-    r"gemini|deepmind|agentic|foundation model|neural network|"
-    r"hugging face|ai model|ai agent"
+    r"gemini|deepmind|agentic|foundation model|ai model|ai agent"
     r")\b",
     re.I,
 )
 
-GEO = re.compile(
-    r"\b("
-    r"war|conflict|sanction|sanctions|nato|united nations|gaza|"
-    r"israel|iran|ukraine|russia|china|taiwan|houthi|red sea|"
-    r"diplomacy|diplomatic|ceasefire|military|missile|nuclear|"
-    r"border dispute|peace talks|invasion|airstrike"
-    r")\b",
-    re.I,
-)
 
 MACRO = re.compile(
     r"\b("
-    r"inflation|interest rate|interest rates|central bank|rbi|"
-    r"federal reserve|gdp|economic growth|fiscal|monetary|currency|"
-    r"rupee|dollar|employment|unemployment|budget|deficit|"
-    r"bond yield|bond yields|crude oil|trade deficit|current account|"
-    r"repo rate|liquidity|open market operation|omo"
+    r"inflation|interest rate|repo rate|central bank|rbi|"
+    r"federal reserve|fed rate|gdp|economic growth|fiscal|monetary|"
+    r"currency|rupee|employment|unemployment|budget|deficit|"
+    r"bond yield|bond yields|liquidity|current account|trade deficit|"
+    r"open market operation|omo"
     r")\b",
     re.I,
 )
+
+
+GEO = re.compile(
+    r"\b("
+    r"war|ceasefire|military|airstrike|missile|nuclear|sanction|"
+    r"sanctions|nato|gaza|israel|iran|ukraine|russia|china|taiwan|"
+    r"houthi|red sea|invasion|peace talks|border conflict"
+    r")\b",
+    re.I,
+)
+
 
 SCIENCE = re.compile(
     r"\b("
-    r"climate|global warming|emissions|space mission|nasa|physics|"
-    r"quantum|biology|genome|scientists|researchers|discovery|"
-    r"energy transition|renewable energy|solar energy|battery technology|"
-    r"clinical trial|telescope|asteroid"
+    r"climate|emissions|global warming|space mission|nasa|physics|"
+    r"quantum|genome|scientists|researchers|discovery|telescope|"
+    r"asteroid|renewable energy|clinical trial"
     r")\b",
     re.I,
 )
 
 
 # ============================================================
-# HIGH-SIGNAL / LOW-SIGNAL LANGUAGE
+# MARKETS
 # ============================================================
 
-SYSTEMIC = re.compile(
+INDIAN_MARKETS = re.compile(
     r"\b("
-    r"government|supreme court|high court|parliament|cabinet|"
-    r"central bank|rbi|regulator|regulation|policy|legislation|"
-    r"law|bill|budget|tax|tariff|sanction|interest rate|inflation|"
-    r"gdp|recession|liquidity|banking system|financial system|"
-    r"trade agreement|trade deal|merger|acquisition|ipo|"
-    r"bankruptcy|default|antitrust|competition commission|"
-    r"sebi|rbi|court ruling|constitutional|national security|"
-    r"ceasefire|military|nuclear|election result|referendum|"
-    r"ai model|chip|semiconductor|drug approval|clinical trial|"
-    r"scientific discovery|climate agreement"
+    r"nifty|sensex|nse|bse|sebi|dalal street|stock market|"
+    r"equity market|equities|fii|fiis|dii|diis|foreign investors|"
+    r"mutual fund|market cap|market capitalisation|market capitalization|"
+    r"ipo|listing|shares|benchmark index"
     r")\b",
     re.I,
 )
 
-MAJOR_SCALE = re.compile(
+
+COMPANY_EVENT = re.compile(
     r"\b("
-    r"billion|trillion|crore|lakh crore|nationwide|national|"
-    r"millions|million people|massive|record high|record low|"
-    r"statewide|global|worldwide|systemic|emergency|"
-    r"state of emergency"
+    r"quarterly results|earnings|revenue|profit|net profit|"
+    r"operating profit|ebitda|guidance|acquisition|acquires|merger|"
+    r"stake sale|buyback|rights issue|fundraise|fund raising|"
+    r"ipo|listing|demerger|order book"
     r")\b",
     re.I,
 )
 
-CRIME_NOISE = re.compile(
+
+CRUDE = re.compile(
     r"\b("
-    r"murder|murdered|killed|stabbed|stabbing|shooting|shot dead|"
-    r"rape|raped|assault|robbery|robbed|theft|kidnap|kidnapped|"
-    r"body found|dead body|suicide|domestic dispute|"
-    r"family dispute|road rage"
+    r"brent|crude oil|oil prices|opec|opec\+|oil supply|"
+    r"oil production"
     r")\b",
     re.I,
 )
 
-MAJOR_CASUALTY_CONTEXT = re.compile(
+
+FED = re.compile(
     r"\b("
-    r"terror|terrorist|terrorism|war|airstrike|bombing|"
-    r"earthquake|tsunami|cyclone|hurricane|flood|wildfire|"
-    r"industrial accident|building collapse|train crash|"
-    r"plane crash|aviation accident|stampede|mass shooting|"
-    r"military attack|missile attack|public health emergency"
+    r"federal reserve|fed rate|fed rates|jerome powell|"
+    r"us interest rates|rate cut|rate hike"
     r")\b",
     re.I,
 )
 
-ENTERTAINMENT_NOISE = re.compile(
+
+US_YIELDS = re.compile(
     r"\b("
-    r"bollywood|actor|actress|celebrity|film star|movie review|"
-    r"box office|trailer|web series|reality show|fashion|"
-    r"wedding photos|viral video|influencer|instagram|"
-    r"relationship rumours|dating rumours"
+    r"treasury yield|treasury yields|us 10-year|10-year yield|"
+    r"bond yields|us yields"
     r")\b",
     re.I,
 )
 
-SPORTS_NOISE = re.compile(
+
+DOLLAR = re.compile(
+    r"\b("
+    r"dollar index|dxy|strong dollar|dollar rises|dollar falls|"
+    r"us dollar"
+    r")\b",
+    re.I,
+)
+
+
+CHINA = re.compile(
+    r"\b("
+    r"china economy|chinese economy|china growth|china stimulus|"
+    r"china property|chinese demand|beijing stimulus"
+    r")\b",
+    re.I,
+)
+
+
+TRADE = re.compile(
+    r"\b("
+    r"tariff|tariffs|trade war|export ban|export controls|"
+    r"trade restrictions|import duty|trade agreement"
+    r")\b",
+    re.I,
+)
+
+
+SHIPPING = re.compile(
+    r"\b("
+    r"red sea|shipping disruption|shipping costs|freight rates|"
+    r"strait of hormuz|suez canal|container rates"
+    r")\b",
+    re.I,
+)
+
+
+SEMICONDUCTORS = re.compile(
+    r"\b("
+    r"semiconductor|semiconductors|chip export|chip exports|"
+    r"nvidia|advanced chips|chip restrictions"
+    r")\b",
+    re.I,
+)
+
+
+# ============================================================
+# NOISE
+# ============================================================
+
+CRIME = re.compile(
+    r"\b("
+    r"murder|murdered|stabbed|stabbing|shot dead|rape|raped|"
+    r"robbery|robbed|kidnap|kidnapped|body found|dead body|"
+    r"domestic dispute|road rage|assaulted"
+    r")\b",
+    re.I,
+)
+
+
+SYSTEMIC_CASUALTY = re.compile(
+    r"\b("
+    r"terror|terrorist|war|airstrike|bombing|earthquake|tsunami|"
+    r"cyclone|hurricane|flood|wildfire|industrial disaster|"
+    r"train crash|plane crash|mass shooting|stampede|"
+    r"public health emergency"
+    r")\b",
+    re.I,
+)
+
+
+ENTERTAINMENT = re.compile(
+    r"\b("
+    r"bollywood|actor|actress|celebrity|movie review|box office|"
+    r"trailer|web series|reality show|fashion|wedding photos|"
+    r"influencer|dating rumours|dating rumors"
+    r")\b",
+    re.I,
+)
+
+
+SPORTS = re.compile(
     r"\b("
     r"cricket|ipl|football match|premier league|champions league|"
-    r"tennis|wimbledon|us open|australian open|fifa|"
-    r"scorecard|match score|runs|wickets|goal scored"
+    r"tennis|wimbledon|us open|fifa|scorecard|wickets"
     r")\b",
     re.I,
 )
 
-LIFESTYLE_NOISE = re.compile(
+
+LIFESTYLE = re.compile(
     r"\b("
-    r"horoscope|zodiac|recipe|fashion tips|beauty tips|"
-    r"weight loss tips|relationship tips|travel tips|"
-    r"viral hack|food recipe"
+    r"horoscope|zodiac|recipe|beauty tips|weight loss tips|"
+    r"relationship tips|viral hack"
     r")\b",
     re.I,
 )
+
 
 CLICKBAIT = re.compile(
     r"\b("
     r"you won't believe|internet reacts|netizens react|"
     r"breaks internet|goes viral|must watch|shocking video|"
-    r"fans react|stuns fans|leaves internet divided"
+    r"fans react|stuns fans"
     r")\b",
     re.I,
 )
 
-ROUTINE_POLITICAL_NOISE = re.compile(
+
+POLITICAL_THEATRE = re.compile(
     r"\b("
     r"slams|hits out|lashes out|takes dig|mocks|taunts|"
-    r"fires back|war of words|sparks row|controversial remark|"
-    r"demands apology|calls .* liar"
+    r"fires back|war of words|sparks row|demands apology"
+    r")\b",
+    re.I,
+)
+
+
+# ============================================================
+# HIGH CONSEQUENCE
+# ============================================================
+
+SYSTEMIC = re.compile(
+    r"\b("
+    r"supreme court|parliament|cabinet|central bank|rbi|sebi|"
+    r"regulator|regulation|policy|legislation|law|bill|budget|"
+    r"tax|tariff|sanctions|interest rate|inflation|gdp|liquidity|"
+    r"financial system|banking system|trade agreement|merger|"
+    r"acquisition|bankruptcy|default|antitrust|national security|"
+    r"ceasefire|military|nuclear|election result|referendum|"
+    r"drug approval|scientific discovery"
+    r")\b",
+    re.I,
+)
+
+
+LARGE_SCALE = re.compile(
+    r"\b("
+    r"billion|trillion|lakh crore|nationwide|millions|"
+    r"record high|record low|systemic|state of emergency"
+    r")\b",
+    re.I,
+)
+
+
+CRITICAL_EVENT = re.compile(
+    r"\b("
+    r"war declared|invasion|nuclear attack|nuclear strike|"
+    r"major terror attack|state of emergency|sovereign default|"
+    r"banking crisis|financial crisis|market crash|"
+    r"emergency rate cut|emergency rate hike|"
+    r"nationwide lockdown|constitutional crisis"
     r")\b",
     re.I,
 )
@@ -384,97 +597,71 @@ ROUTINE_POLITICAL_NOISE = re.compile(
 # TEXT HELPERS
 # ============================================================
 
-STOP = set(
-    """
-    the a an and or but if then of to in on for from by with at as
-    is are was were be been this that these those it its their his
-    her our your into over after before amid says said say new latest
-    live update updates news report reports how why what who when where
-    could would should will can may more about than up down out off
-    today yesterday breaking exclusive explained
-    """.split()
-)
-
 TAG_RE = re.compile(r"<[^>]+>")
-
-JUNK_SUMMARY_PATTERNS = [
-    re.compile(r"read more.*$", re.I),
-    re.compile(r"click here.*$", re.I),
-    re.compile(r"the post .* first appeared.*$", re.I),
-    re.compile(r"continue reading.*$", re.I),
-    re.compile(r"this article .* appeared.*$", re.I),
-    re.compile(r"subscribe to .*$", re.I),
-]
 
 
 def clean_html(value):
-    text = TAG_RE.sub(" ", unescape(value or ""))
-    text = re.sub(r"\s+", " ", text).strip()
+    text = TAG_RE.sub(
+        " ",
+        unescape(value or "")
+    )
 
-    for pattern in JUNK_SUMMARY_PATTERNS:
-        text = pattern.sub("", text).strip()
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
+
+    junk = [
+        r"read more.*$",
+        r"click here.*$",
+        r"continue reading.*$",
+        r"subscribe to.*$",
+        r"the post .* first appeared.*$",
+    ]
+
+    for pattern in junk:
+        text = re.sub(
+            pattern,
+            "",
+            text,
+            flags=re.I
+        ).strip()
 
     return text
-
-
-def parse_date(value):
-    if not value:
-        return datetime.now(timezone.utc).isoformat()
-
-    try:
-        dt = parsedate_to_datetime(value.strip())
-
-        if not dt.tzinfo:
-            dt = dt.replace(tzinfo=timezone.utc)
-
-        return dt.astimezone(timezone.utc).isoformat()
-
-    except Exception:
-        pass
-
-    try:
-        dt = datetime.fromisoformat(
-            value.strip().replace("Z", "+00:00")
-        )
-
-        if not dt.tzinfo:
-            dt = dt.replace(tzinfo=timezone.utc)
-
-        return dt.astimezone(timezone.utc).isoformat()
-
-    except Exception:
-        return datetime.now(timezone.utc).isoformat()
-
-
-def text_of(node, names):
-    for child in list(node):
-        tag = child.tag.split("}")[-1].lower()
-
-        if tag in names and child.text:
-            return child.text
-
-    return ""
 
 
 def normalized(text):
     text = clean_html(text).lower()
 
     text = re.sub(
-        r"\b(live|breaking|latest|updates?|explained|exclusive)\b",
+        r"\b("
+        r"live|breaking|latest|update|updates|"
+        r"exclusive|explained"
+        r")\b",
         " ",
-        text,
+        text
     )
 
-    text = re.sub(r"[^a-z0-9 ]", " ", text)
+    text = re.sub(
+        r"[^a-z0-9 ]",
+        " ",
+        text
+    )
 
-    return re.sub(r"\s+", " ", text).strip()
+    return re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
 
 
 def words(text):
     return [
         word
         for word in normalized(text).split()
-        if len(word) > 2 and word not in STOP
+        if len(word) > 2
+        and word not in STOP
     ]
 
 
@@ -492,11 +679,11 @@ def cosine(a, b):
     )
 
     na = math.sqrt(
-        sum(value * value for value in a.values())
+        sum(x * x for x in a.values())
     )
 
     nb = math.sqrt(
-        sum(value * value for value in b.values())
+        sum(x * x for x in b.values())
     )
 
     if not na or not nb:
@@ -505,28 +692,94 @@ def cosine(a, b):
     return dot / (na * nb)
 
 
-def age_hours(iso):
+def parse_date(value):
+    if not value:
+        return datetime.now(
+            timezone.utc
+        ).isoformat()
+
+    try:
+        dt = parsedate_to_datetime(
+            value.strip()
+        )
+
+        if not dt.tzinfo:
+            dt = dt.replace(
+                tzinfo=timezone.utc
+            )
+
+        return dt.astimezone(
+            timezone.utc
+        ).isoformat()
+
+    except Exception:
+        pass
+
     try:
         dt = datetime.fromisoformat(
-            iso.replace("Z", "+00:00")
+            value.strip().replace(
+                "Z",
+                "+00:00"
+            )
+        )
+
+        if not dt.tzinfo:
+            dt = dt.replace(
+                tzinfo=timezone.utc
+            )
+
+        return dt.astimezone(
+            timezone.utc
+        ).isoformat()
+
+    except Exception:
+        return datetime.now(
+            timezone.utc
+        ).isoformat()
+
+
+def age_hours(value):
+    try:
+        dt = datetime.fromisoformat(
+            value.replace(
+                "Z",
+                "+00:00"
+            )
         )
 
         return max(
             0,
             (
-                datetime.now(timezone.utc) - dt
-            ).total_seconds() / 3600,
+                datetime.now(timezone.utc)
+                - dt
+            ).total_seconds()
+            / 3600
         )
 
     except Exception:
         return 999
 
 
-def stable_key(title, published):
-    raw = (
-        (published or "")[:10]
-        + "|"
-        + " ".join(words(title)[:12])
+def text_of(node, names):
+    for child in list(node):
+        tag = (
+            child.tag
+            .split("}")[-1]
+            .lower()
+        )
+
+        if (
+            tag in names
+            and child.text
+        ):
+            return child.text
+
+    return ""
+
+
+def stable_key(title):
+    raw = " ".join(
+        words(title)[:14]
     )
 
     return hashlib.sha1(
@@ -535,22 +788,30 @@ def stable_key(title, published):
 
 
 # ============================================================
-# FEED PARSING
+# FEED PARSER
 # ============================================================
 
 def parse_feed(data):
     root = ET.fromstring(data)
+
     output = []
 
     for node in root.iter():
-        tag = node.tag.split("}")[-1].lower()
+        tag = (
+            node.tag
+            .split("}")[-1]
+            .lower()
+        )
 
-        if tag not in {"item", "entry"}:
+        if tag not in {
+            "item",
+            "entry"
+        }:
             continue
 
         title = text_of(
             node,
-            {"title"},
+            {"title"}
         )
 
         description = text_of(
@@ -559,8 +820,8 @@ def parse_feed(data):
                 "description",
                 "summary",
                 "content",
-                "encoded",
-            },
+                "encoded"
+            }
         )
 
         date = text_of(
@@ -569,13 +830,13 @@ def parse_feed(data):
                 "pubdate",
                 "published",
                 "updated",
-                "date",
-            },
+                "date"
+            }
         )
 
         link = text_of(
             node,
-            {"link"},
+            {"link"}
         )
 
         if not link:
@@ -594,17 +855,17 @@ def parse_feed(data):
                     break
 
         title = clean_html(title)
-        description = clean_html(description)
+        description = clean_html(
+            description
+        )
 
         if title and link:
-            output.append(
-                {
-                    "title": title,
-                    "description": description,
-                    "url": link.strip(),
-                    "published_at": parse_date(date),
-                }
-            )
+            output.append({
+                "title": title,
+                "description": description,
+                "url": link.strip(),
+                "published_at": parse_date(date),
+            })
 
     return output[:MAX_FEED_ITEMS]
 
@@ -626,17 +887,15 @@ async def fetch(client, source):
         )
 
         for row in rows:
-            row.update(
-                {
-                    "source": source["name"],
-                    "source_weight": source["weight"],
-                    "base_category": source["category"],
-                    "primary_source": source.get(
-                        "primary",
-                        False,
-                    ),
-                }
-            )
+            row.update({
+                "source": source["name"],
+                "source_weight": source["weight"],
+                "base_category": source["category"],
+                "primary_source": source.get(
+                    "primary",
+                    False
+                ),
+            })
 
         return rows, {
             "source": source["name"],
@@ -654,12 +913,12 @@ async def fetch(client, source):
             "ok": False,
             "item_count": 0,
             "checked_at": checked,
-            "error": str(exc)[:180],
+            "error": str(exc)[:160],
         }
 
 
 # ============================================================
-# CATEGORY CLASSIFICATION
+# CLASSIFICATION
 # ============================================================
 
 def classify(article):
@@ -669,37 +928,61 @@ def classify(article):
         + article["description"]
     )
 
-    base = article["base_category"]
+    base = article[
+        "base_category"
+    ]
+
+    # Preserve explicit market discovery feeds.
+    if base in {
+        "Indian Markets",
+        "Global → India",
+        "Companies & Earnings"
+    }:
+        return base
 
     if (
-        AI.search(text)
-        and base
-        not in {
+        COMPANY_EVENT.search(text)
+        and INDIAN_MARKETS.search(text)
+    ):
+        return "Companies & Earnings"
+
+    if (
+        INDIAN_MARKETS.search(text)
+        and base in {
+            "Business & Micro",
+            "Macro Economics"
+        }
+    ):
+        return "Indian Markets"
+
+    if (
+        AI_RE.search(text)
+        and base not in {
             "Indian Politics",
             "World Politics",
-            "Geopolitics",
+            "Geopolitics"
         }
     ):
         return "AI"
 
     if (
-        INDIA.search(text)
-        and POLITICS.search(text)
+        MACRO.search(text)
+        and base not in {
+            "Geopolitics",
+            "World Politics"
+        }
     ):
-        return "Indian Politics"
-
-    if (
-        GEO.search(text)
-        and not INDIA.search(text)
-    ):
-        return "Geopolitics"
-
-    if MACRO.search(text):
         return "Macro Economics"
 
     if (
+        GEO.search(text)
+        and base == "World"
+    ):
+        return "Geopolitics"
+
+    if (
         SCIENCE.search(text)
-        and not AI.search(text)
+        and not AI_RE.search(text)
     ):
         return "Science & Climate"
 
@@ -707,7 +990,7 @@ def classify(article):
 
 
 # ============================================================
-# NOISE FILTER
+# NOISE
 # ============================================================
 
 def noise_penalty(article):
@@ -719,42 +1002,126 @@ def noise_penalty(article):
 
     penalty = 0
 
-    if ENTERTAINMENT_NOISE.search(text):
-        penalty += 55
+    if ENTERTAINMENT.search(text):
+        penalty += 65
 
-    if SPORTS_NOISE.search(text):
-        penalty += 55
+    if SPORTS.search(text):
+        penalty += 65
 
-    if LIFESTYLE_NOISE.search(text):
-        penalty += 60
+    if LIFESTYLE.search(text):
+        penalty += 70
 
     if CLICKBAIT.search(text):
-        penalty += 45
+        penalty += 50
 
-    if ROUTINE_POLITICAL_NOISE.search(text):
-        penalty += 28
+    if POLITICAL_THEATRE.search(text):
+        penalty += 35
 
-    if CRIME_NOISE.search(text):
-        if not (
-            MAJOR_CASUALTY_CONTEXT.search(text)
-            or SYSTEMIC.search(text)
-            or MAJOR_SCALE.search(text)
-        ):
-            penalty += 55
-        else:
+    if CRIME.search(text):
+        if SYSTEMIC_CASUALTY.search(text):
             penalty += 5
+        else:
+            penalty += 65
 
     return penalty
 
 
 def should_drop(article):
-    penalty = noise_penalty(article)
+    return (
+        noise_penalty(article)
+        >= 60
+    )
 
-    # Very strong noise can disappear entirely.
-    if penalty >= 55:
-        return True
 
-    return False
+# ============================================================
+# MARKET IMPACT
+# ============================================================
+
+def market_context(text):
+    """
+    Describes a transmission channel.
+
+    It does NOT predict whether Indian equities
+    will rise or fall.
+    """
+
+    channels = []
+    explanations = []
+
+    if CRUDE.search(text):
+        channels.append("Crude oil")
+
+        explanations.append(
+            "Sustained changes in crude prices can affect "
+            "India's import bill, inflation, the rupee and "
+            "rate expectations."
+        )
+
+    if FED.search(text):
+        channels.append("Fed")
+
+        explanations.append(
+            "US monetary-policy expectations can influence "
+            "global funding conditions, foreign portfolio flows "
+            "and valuation-sensitive Indian assets."
+        )
+
+    if US_YIELDS.search(text):
+        channels.append("US yields")
+
+        explanations.append(
+            "Changes in US Treasury yields can alter the relative "
+            "attractiveness of emerging-market assets and global "
+            "cost-of-capital conditions."
+        )
+
+    if DOLLAR.search(text):
+        channels.append("Dollar / INR")
+
+        explanations.append(
+            "Broad dollar moves can affect the rupee, imported "
+            "costs and foreign-investor positioning."
+        )
+
+    if CHINA.search(text):
+        channels.append("China")
+
+        explanations.append(
+            "Changes in Chinese growth and demand can transmit "
+            "through commodities, metals, global manufacturing "
+            "and regional risk appetite."
+        )
+
+    if TRADE.search(text):
+        channels.append("Trade")
+
+        explanations.append(
+            "Trade restrictions and tariff changes can affect "
+            "exporters, supply chains and sector-level competitiveness."
+        )
+
+    if SHIPPING.search(text):
+        channels.append("Shipping")
+
+        explanations.append(
+            "Shipping disruptions can raise freight and import costs "
+            "and affect companies dependent on global supply chains."
+        )
+
+    if SEMICONDUCTORS.search(text):
+        channels.append("Semiconductors")
+
+        explanations.append(
+            "Global chip restrictions and supply changes can affect "
+            "technology supply chains, electronics manufacturing and "
+            "semiconductor investment."
+        )
+
+    if not explanations:
+        return None, []
+
+    # Keep cards compact.
+    return explanations[0], channels[:4]
 
 
 # ============================================================
@@ -768,60 +1135,72 @@ def article_signal(article):
         + article["description"]
     )
 
-    score = 0.0
+    score = (
+        article.get(
+            "source_weight",
+            3
+        ) * 4
+    )
 
-    # Source quality
-    score += article.get(
-        "source_weight",
-        3,
-    ) * 4
-
-    # Recency
     age = age_hours(
         article["published_at"]
     )
 
     score += max(
         0,
-        30 - age * 0.75,
+        28 - age * 0.7
     )
 
-    # Primary / official source
     if article.get(
         "primary_source"
     ):
         score += 10
 
-    # Systemic importance
     if SYSTEMIC.search(text):
-        score += 18
+        score += 16
 
-    if MAJOR_SCALE.search(text):
-        score += 10
-
-    # Important subject areas
-    category = article["category"]
+    if LARGE_SCALE.search(text):
+        score += 8
 
     category_bonus = {
-        "Indian Politics": 7,
-        "Macro Economics": 9,
-        "Geopolitics": 9,
-        "AI": 8,
-        "India": 6,
-        "World": 5,
-        "World Politics": 5,
-        "Business & Micro": 5,
-        "Science & Climate": 6,
-        "Technology": 4,
-        "The Ken": 3,
+        "India": 5,
+        "Indian Politics": 6,
+        "Macro Economics": 8,
+        "Business & Micro": 4,
+
+        "Indian Markets": 7,
+        "Global → India": 7,
+        "Companies & Earnings": 5,
+
+        "World": 4,
+        "World Politics": 4,
+        "Geopolitics": 8,
+
+        "AI": 7,
+        "Technology": 3,
+        "Science & Climate": 5,
+        "The Ken": 2,
     }
 
     score += category_bonus.get(
-        category,
-        0,
+        article["category"],
+        0
     )
 
-    score -= noise_penalty(article)
+    impact, channels = market_context(
+        text
+    )
+
+    if (
+        article["category"]
+        == "Global → India"
+        and channels
+    ):
+        score += 8
+
+    score -= noise_penalty(
+        article
+    )
 
     return round(score, 2)
 
@@ -833,66 +1212,67 @@ def article_signal(article):
 def cluster_articles(rows):
     rows = sorted(
         rows,
-        key=lambda item:
-            item["published_at"],
-        reverse=True,
+        key=lambda x:
+            x["published_at"],
+        reverse=True
     )
 
     used = set()
     clusters = []
 
     for i, article in enumerate(rows):
+
         if i in used:
             continue
-
-        article_vector = vector(
-            article["title"]
-            + " "
-            + article["description"][:500]
-        )
 
         members = [article]
         used.add(i)
 
-        article_time = datetime.fromisoformat(
-            article["published_at"].replace(
-                "Z",
-                "+00:00",
-            )
+        base_vector = vector(
+            article["title"]
         )
 
         for j, candidate in enumerate(rows):
+
             if j in used:
                 continue
 
-            candidate_time = datetime.fromisoformat(
-                candidate[
-                    "published_at"
-                ].replace(
-                    "Z",
-                    "+00:00",
+            try:
+                a_time = datetime.fromisoformat(
+                    article[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00"
+                    )
                 )
-            )
 
-            if abs(
-                (
-                    article_time
-                    - candidate_time
-                ).total_seconds()
-            ) > 72 * 3600:
-                continue
+                b_time = datetime.fromisoformat(
+                    candidate[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00"
+                    )
+                )
+
+                if abs(
+                    (
+                        a_time - b_time
+                    ).total_seconds()
+                ) > 60 * 3600:
+                    continue
+
+            except Exception:
+                pass
 
             candidate_vector = vector(
                 candidate["title"]
-                + " "
-                + candidate[
-                    "description"
-                ][:500]
             )
 
             similarity = cosine(
-                article_vector,
-                candidate_vector,
+                base_vector,
+                candidate_vector
             )
 
             a_words = set(
@@ -903,36 +1283,37 @@ def cluster_articles(rows):
                 words(candidate["title"])
             )
 
-            overlap_words = (
+            common = (
                 a_words & b_words
             )
 
             overlap = (
-                len(overlap_words)
+                len(common)
                 / max(
                     1,
                     min(
                         len(a_words),
-                        len(b_words),
-                    ),
+                        len(b_words)
+                    )
                 )
             )
 
-            threshold = 0.31
-
-            if (
+            same_category = (
                 article["category"]
-                != candidate["category"]
-            ):
-                threshold += 0.05
+                == candidate["category"]
+            )
+
+            threshold = (
+                0.34
+                if same_category
+                else 0.40
+            )
 
             if (
                 similarity >= threshold
                 or (
-                    overlap >= 0.48
-                    and len(
-                        overlap_words
-                    ) >= 3
+                    overlap >= 0.50
+                    and len(common) >= 3
                 )
             ):
                 members.append(
@@ -947,80 +1328,82 @@ def cluster_articles(rows):
 
     return sorted(
         clusters,
-        key=lambda item: (
-            item["importance"],
-            item["published_at"],
+        key=lambda x: (
+            x["importance"],
+            x["published_at"]
         ),
-        reverse=True,
+        reverse=True
     )
 
 
 # ============================================================
-# CLUSTER SCORING
+# CLUSTER BUILDING
 # ============================================================
 
 CATEGORY_PRIORITY = [
-    "Indian Politics",
+    "Indian Markets",
+    "Global → India",
+    "Companies & Earnings",
+
     "Macro Economics",
+    "Indian Politics",
     "India",
+
     "Geopolitics",
     "World Politics",
     "World",
+
     "AI",
-    "Business & Micro",
     "Science & Climate",
     "Technology",
+    "Business & Micro",
     "The Ken",
 ]
 
 
-def cluster_category(members):
+def choose_category(members):
     categories = [
-        member["category"]
-        for member in members
+        x["category"]
+        for x in members
     ]
 
     for category in CATEGORY_PRIORITY:
         if category in categories:
             return category
 
-    return members[0]["category"]
+    return categories[0]
 
 
 def choose_primary(members):
-    def primary_score(article):
-        description_quality = min(
-            len(
-                article.get(
-                    "description",
-                    "",
-                )
-            ),
-            900,
-        ) / 100
-
-        return (
-            article_signal(article)
+    return max(
+        members,
+        key=lambda x: (
+            article_signal(x)
+            + min(
+                len(
+                    x.get(
+                        "description",
+                        ""
+                    )
+                ),
+                700
+            ) / 100
             + (
-                8
-                if article.get(
+                6
+                if x.get(
                     "primary_source"
                 )
                 else 0
             )
-            + description_quality
         )
-
-    return max(
-        members,
-        key=primary_score,
     )
 
 
-def best_description(members):
-    candidates = []
+def choose_description(members):
+    options = []
 
     for article in members:
+
         description = clean_html(
             article.get(
                 "description",
@@ -1028,71 +1411,76 @@ def best_description(members):
             )
         )
 
-        if len(description) < 40:
+        if len(description) < 45:
             continue
-
-        # Avoid descriptions that simply repeat headline.
-        title_norm = normalized(
-            article["title"]
-        )
-
-        desc_norm = normalized(
-            description
-        )
-
-        repeated = (
-            title_norm
-            and desc_norm.startswith(
-                title_norm
-            )
-        )
 
         score = (
             article_signal(article)
             + min(
                 len(description),
-                700,
+                700
             ) / 80
-            + (
-                5
-                if article.get(
-                    "primary_source"
-                )
-                else 0
-            )
-            - (
-                8
-                if repeated
-                else 0
-            )
         )
 
-        candidates.append(
+        options.append(
             (
                 score,
-                description,
+                description
             )
         )
 
-    if not candidates:
+    if not options:
         return ""
 
-    candidates.sort(
-        key=lambda item: item[0],
+    options.sort(
         reverse=True,
+        key=lambda x: x[0]
     )
 
-    description = candidates[0][1]
+    text = options[0][1]
 
-    # Backend safety cap. Frontend also caps by words.
-    if len(description) > 850:
-        description = (
-            description[:847]
+    if len(text) > 850:
+        text = (
+            text[:847]
             .rsplit(" ", 1)[0]
             + "…"
         )
 
-    return description
+    return text
+
+
+def critical_label(
+    members,
+    score,
+    source_count
+):
+    """
+    Critical requires an exceptional event,
+    not merely a large score.
+
+    This deliberately makes CRITICAL rare.
+    """
+
+    combined = " ".join(
+        (
+            x["title"]
+            + " "
+            + x["description"]
+        )
+        for x in members
+    )
+
+    if (
+        CRITICAL_EVENT.search(combined)
+        and score >= 70
+        and source_count >= 2
+    ):
+        return "critical"
+
+    if score >= BRIEF_MIN_SCORE:
+        return "significant"
+
+    return "noteworthy"
 
 
 def make_cluster(members):
@@ -1100,208 +1488,317 @@ def make_cluster(members):
         members
     )
 
-    category = cluster_category(
+    category = choose_category(
         members
     )
 
     sources = sorted(
         set(
-            member["source"]
-            for member in members
+            x["source"]
+            for x in members
         )
     )
 
-    primary_sources = sorted(
-        set(
-            member["source"]
-            for member in members
-            if member.get(
-                "primary_source"
-            )
-        )
+    best_score = max(
+        article_signal(x)
+        for x in members
     )
 
-    best_article_score = max(
-        article_signal(member)
-        for member in members
-    )
-
-    # Multi-source confirmation is valuable,
-    # but capped so volume alone cannot dominate.
     confirmation_bonus = min(
-        18,
+        15,
         max(
             0,
             len(sources) - 1
-        ) * 6,
+        ) * 5
     )
 
-    primary_bonus = (
-        8
-        if primary_sources
+    official_bonus = (
+        6
+        if any(
+            x.get("primary_source")
+            for x in members
+        )
         else 0
     )
 
-    cluster_penalty = min(
-        noise_penalty(member)
-        for member in members
-    )
-
     importance = (
-        best_article_score
+        best_score
         + confirmation_bonus
-        + primary_bonus
-        - cluster_penalty * 0.35
+        + official_bonus
     )
 
-    description = best_description(
-        members
+    combined_text = " ".join(
+        (
+            x["title"]
+            + " "
+            + x["description"]
+        )
+        for x in members
+    )
+
+    impact, channels = market_context(
+        combined_text
+    )
+
+    # Only expose market context on relevant categories.
+    if category not in {
+        "Indian Markets",
+        "Global → India",
+        "Companies & Earnings",
+        "Macro Economics",
+        "Geopolitics"
+    }:
+        impact = None
+        channels = []
+
+    published = max(
+        x["published_at"]
+        for x in members
+    )
+
+    label = critical_label(
+        members,
+        importance,
+        len(sources)
     )
 
     return {
-        "cluster_key": stable_key(
+        "cluster_key":
+            stable_key(
+                primary["title"]
+            ),
+
+        "title":
             primary["title"],
-            primary["published_at"],
-        ),
-        "title": primary["title"],
-        "description": description,
-        "category": category,
-        "published_at": max(
-            member["published_at"]
-            for member in members
-        ),
-        "importance": round(
-            importance,
-            2,
-        ),
-        "source_count": len(
-            sources
-        ),
-        "sources": sources,
-        "primary_sources": primary_sources,
-        "primary": primary,
-        "articles": sorted(
-            members,
-            key=lambda item:
-                item["published_at"],
-            reverse=True,
-        ),
-        "summary_mode": "source-brief",
+
+        "description":
+            choose_description(
+                members
+            ),
+
+        "brief":
+            choose_description(
+                members
+            ),
+
+        "category":
+            category,
+
+        "published_at":
+            published,
+
+        "importance":
+            round(
+                importance,
+                2
+            ),
+
+        "importance_label":
+            label,
+
+        "source_count":
+            len(sources),
+
+        "sources":
+            sources,
+
+        "primary":
+            primary,
+
+        "articles":
+            sorted(
+                members,
+                key=lambda x:
+                    x["published_at"],
+                reverse=True
+            ),
+
+        "market_impact":
+            impact,
+
+        "market_channels":
+            channels,
+
+        # Reserved for future genuine update detection.
+        "is_developing":
+            False,
+
+        "summary_mode":
+            "source-brief",
     }
 
 
 # ============================================================
-# BRIEF SELECTION
+# BRIEF DIVERSITY
 # ============================================================
 
-def category_cap(category):
-    # Prevent one subject from swallowing the briefing.
-    caps = {
-        "Indian Politics": 2,
-        "India": 2,
-        "Macro Economics": 2,
-        "Geopolitics": 2,
-        "World": 2,
-        "World Politics": 1,
-        "AI": 2,
-        "Business & Micro": 2,
-        "Technology": 1,
-        "Science & Climate": 1,
-        "The Ken": 1,
-    }
+CATEGORY_CAPS = {
+    "India": 2,
+    "Indian Politics": 1,
+    "Macro Economics": 1,
+    "Business & Micro": 1,
 
-    return caps.get(
-        category,
-        1,
-    )
+    "Indian Markets": 1,
+    "Global → India": 1,
+    "Companies & Earnings": 1,
+
+    "World": 1,
+    "World Politics": 1,
+    "Geopolitics": 2,
+
+    "AI": 1,
+    "Technology": 1,
+    "Science & Climate": 1,
+    "The Ken": 1,
+}
 
 
-def select_top_brief(clusters):
+CATEGORY_FAMILIES = {
+    "India": "india",
+    "Indian Politics": "india",
+    "Macro Economics": "economy",
+
+    "Business & Micro": "business",
+    "Companies & Earnings": "business",
+
+    "Indian Markets": "markets",
+    "Global → India": "markets",
+
+    "World": "world",
+    "World Politics": "world",
+    "Geopolitics": "world",
+
+    "AI": "technology",
+    "Technology": "technology",
+
+    "Science & Climate": "science",
+    "The Ken": "special",
+}
+
+
+def select_brief(clusters):
     """
-    The Brief is deliberately selective.
+    Select only stories that clear the significance bar.
 
-    We do not fill eight slots merely because
-    eight slots exist.
+    We prefer diversity, but significance always comes first.
     """
 
-    selected = []
-    counts = {}
-
-    # Strong threshold first.
-    strong = [
+    eligible = [
         cluster
         for cluster in clusters
-        if cluster["importance"] >= 42
+        if (
+            cluster[
+                "importance_label"
+            ] in {
+                "critical",
+                "significant"
+            }
+            and cluster[
+                "importance"
+            ] >= BRIEF_MIN_SCORE
+        )
     ]
 
-    for cluster in strong:
+    selected = []
+    category_counts = Counter()
+    family_counts = Counter()
+
+    # Pass 1:
+    # one strong story from different families.
+    for cluster in eligible:
+
         category = cluster[
             "category"
         ]
 
-        if counts.get(
-            category,
-            0,
-        ) >= category_cap(category):
+        family = (
+            CATEGORY_FAMILIES.get(
+                category,
+                category
+            )
+        )
+
+        if family_counts[
+            family
+        ] >= 1:
             continue
 
         selected.append(
             cluster
         )
 
-        counts[category] = (
-            counts.get(
-                category,
-                0,
-            )
-            + 1
-        )
+        category_counts[
+            category
+        ] += 1
 
-        if (
-            len(selected)
-            >= TOP_BRIEF_COUNT
-        ):
+        family_counts[
+            family
+        ] += 1
+
+        if len(selected) >= 6:
             break
 
-    # Ensure the briefing isn't absurdly empty
-    # when feeds are unusually quiet.
-    if len(selected) < 4:
-        for cluster in clusters:
-            if cluster in selected:
-                continue
 
-            if (
-                cluster["importance"]
-                < 30
-            ):
+    # Pass 2:
+    # allow genuinely strong second stories.
+    if len(selected) < BRIEF_MAX:
+
+        for cluster in eligible:
+
+            if cluster in selected:
                 continue
 
             category = cluster[
                 "category"
             ]
 
-            if counts.get(
-                category,
-                0,
-            ) >= category_cap(category):
+            family = (
+                CATEGORY_FAMILIES.get(
+                    category,
+                    category
+                )
+            )
+
+            if (
+                category_counts[
+                    category
+                ]
+                >= CATEGORY_CAPS.get(
+                    category,
+                    1
+                )
+            ):
+                continue
+
+            if (
+                family_counts[
+                    family
+                ] >= 2
+            ):
                 continue
 
             selected.append(
                 cluster
             )
 
-            counts[category] = (
-                counts.get(
-                    category,
-                    0,
-                )
-                + 1
-            )
+            category_counts[
+                category
+            ] += 1
 
-            if len(selected) >= 4:
+            family_counts[
+                family
+            ] += 1
+
+            if (
+                len(selected)
+                >= BRIEF_MAX
+            ):
                 break
 
-    return selected
+
+    # If fewer than five genuinely significant
+    # stories exist, we do NOT fill with junk.
+    return selected[:BRIEF_MAX]
 
 
 # ============================================================
@@ -1309,128 +1806,175 @@ def select_top_brief(clusters):
 # ============================================================
 
 async def main():
+
     headers = {
         "User-Agent":
-            "DailyIntelligence/5.0 "
-            "personal-news-reader"
+            "DailyIntelligence/5.1 "
+            "(personal RSS reader)"
     }
 
     timeout = httpx.Timeout(
         20.0,
-        connect=10.0,
+        connect=10.0
     )
 
     async with httpx.AsyncClient(
         headers=headers,
         follow_redirects=True,
-        timeout=timeout,
+        timeout=timeout
     ) as client:
 
         results = await asyncio.gather(
             *[
                 fetch(
                     client,
-                    source,
+                    source
                 )
                 for source in SOURCES
             ]
         )
+
 
     health = [
         status
         for _, status in results
     ]
 
-    rows = [
+    incoming = [
         article
         for batch, _ in results
         for article in batch
     ]
 
+
     cutoff = (
-        datetime.now(timezone.utc)
+        datetime.now(
+            timezone.utc
+        )
         - timedelta(
             hours=LOOKBACK_HOURS
         )
     )
 
+
     unique = {}
 
-    dropped_noise = 0
+    noise_filtered = 0
+    stale_filtered = 0
 
-    for article in rows:
+
+    for article in incoming:
+
         article["category"] = classify(
             article
         )
 
         try:
-            published = datetime.fromisoformat(
-                article[
-                    "published_at"
-                ].replace(
-                    "Z",
-                    "+00:00",
+            published = (
+                datetime.fromisoformat(
+                    article[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00"
+                    )
                 )
             )
 
             if published < cutoff:
+                stale_filtered += 1
                 continue
 
         except Exception:
             pass
 
+
         if should_drop(article):
-            dropped_noise += 1
+            noise_filtered += 1
             continue
 
-        article["signal_score"] = (
-            article_signal(article)
+
+        article[
+            "signal_score"
+        ] = article_signal(
+            article
         )
+
 
         unique[
             article["url"]
         ] = article
 
+
     rows = list(
         unique.values()
     )
+
 
     clusters = cluster_articles(
         rows
     )
 
-    # Remove clusters that remain extremely weak
-    # after aggregation.
+
     clusters = [
         cluster
         for cluster in clusters
-        if cluster["importance"] >= 18
+        if (
+            cluster[
+                "importance"
+            ]
+            >= MIN_CLUSTER_SCORE
+        )
     ]
 
-    top = select_top_brief(
+
+    top = select_brief(
         clusters
     )
+
 
     generated = datetime.now(
         timezone.utc
     ).isoformat()
 
+
     payload = {
-        "version": "5.0",
-        "generated_at": generated,
-        "article_count": len(rows),
-        "cluster_count": len(
-            clusters
-        ),
-        "noise_filtered": dropped_noise,
+        "version": "5.1",
+
+        "generated_at":
+            generated,
+
+        "article_count":
+            len(rows),
+
+        "cluster_count":
+            len(clusters),
+
+        "brief_count":
+            len(top),
+
+        "noise_filtered":
+            noise_filtered,
+
+        "stale_filtered":
+            stale_filtered,
+
         "clustering_mode":
-            "lexical-cosine",
+            "signal-diversity-v5.1",
+
         "summary_mode":
             "source-brief",
-        "sources": health,
-        "top": top,
-        "clusters": clusters,
+
+        "sources":
+            health,
+
+        "top":
+            top,
+
+        "clusters":
+            clusters,
     }
+
 
     (
         DATA / "latest.json"
@@ -1440,10 +1984,10 @@ async def main():
             ensure_ascii=False,
             separators=(
                 ",",
-                ":",
-            ),
+                ":"
+            )
         ),
-        encoding="utf-8",
+        encoding="utf-8"
     )
 
 
@@ -1456,7 +2000,8 @@ async def main():
     )
 
     date = (
-        local.date().isoformat()
+        local.date()
+        .isoformat()
     )
 
     archive_file = (
@@ -1464,8 +2009,7 @@ async def main():
         / f"{date}.json"
     )
 
-    # Capture one stable daily briefing
-    # after 6:15 AM India time.
+
     if (
         local.hour > 6
         or (
@@ -1477,18 +2021,22 @@ async def main():
         archive_file.write_text(
             json.dumps(
                 {
-                    "date": date,
+                    "date":
+                        date,
+
                     "created_at":
                         generated,
-                    "top": top,
+
+                    "top":
+                        top,
                 },
                 ensure_ascii=False,
                 separators=(
                     ",",
-                    ":",
-                ),
+                    ":"
+                )
             ),
-            encoding="utf-8",
+            encoding="utf-8"
         )
 
 
@@ -1499,8 +2047,10 @@ async def main():
     archives = []
 
     for path in sorted(
-        ARCHIVE.glob("*.json"),
-        reverse=True,
+        ARCHIVE.glob(
+            "*.json"
+        ),
+        reverse=True
     )[:60]:
 
         try:
@@ -1510,38 +2060,43 @@ async def main():
                 )
             )
 
-            archives.append(
-                {
-                    "date":
-                        archive["date"],
-                    "created_at":
-                        archive[
-                            "created_at"
-                        ],
-                    "count":
-                        len(
-                            archive.get(
-                                "top",
-                                [],
-                            )
-                        ),
-                }
-            )
+            archives.append({
+                "date":
+                    archive.get(
+                        "date",
+                        path.stem
+                    ),
+
+                "created_at":
+                    archive.get(
+                        "created_at"
+                    ),
+
+                "count":
+                    len(
+                        archive.get(
+                            "top",
+                            []
+                        )
+                    ),
+            })
 
         except Exception:
             pass
+
 
     (
         DATA / "archives.json"
     ).write_text(
         json.dumps(
             archives,
+            ensure_ascii=False,
             separators=(
                 ",",
-                ":",
-            ),
+                ":"
+            )
         ),
-        encoding="utf-8",
+        encoding="utf-8"
     )
 
 
@@ -1551,13 +2106,71 @@ async def main():
         if source["ok"]
     )
 
+
+    market_count = sum(
+        1
+        for cluster in clusters
+        if cluster["category"] in {
+            "Indian Markets",
+            "Global → India",
+            "Companies & Earnings"
+        }
+    )
+
+
+    critical_count = sum(
+        1
+        for cluster in top
+        if (
+            cluster[
+                "importance_label"
+            ]
+            == "critical"
+        )
+    )
+
+
     print(
-        f"V5 generated: "
-        f"{len(rows)} useful articles, "
-        f"{len(clusters)} clusters, "
-        f"{len(top)} Brief stories, "
-        f"{dropped_noise} noisy articles filtered, "
-        f"{healthy}/{len(health)} sources healthy."
+        "\n"
+        "============================================\n"
+        "DAILY INTELLIGENCE V5.1\n"
+        "============================================"
+    )
+
+    print(
+        f"Useful articles:       {len(rows)}"
+    )
+
+    print(
+        f"Clusters:              {len(clusters)}"
+    )
+
+    print(
+        f"Brief stories:         {len(top)}"
+    )
+
+    print(
+        f"Critical stories:      {critical_count}"
+    )
+
+    print(
+        f"Market stories:        {market_count}"
+    )
+
+    print(
+        f"Noise filtered:        {noise_filtered}"
+    )
+
+    print(
+        f"Stale filtered:        {stale_filtered}"
+    )
+
+    print(
+        f"Healthy sources:       {healthy}/{len(health)}"
+    )
+
+    print(
+        "============================================\n"
     )
 
 
