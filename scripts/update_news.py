@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin, urlparse
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
 
@@ -18,11 +18,17 @@ import httpx
 
 
 # ============================================================
-# DAILY INTELLIGENCE V5.3
+# DAILY INTELLIGENCE V5.4
 #
 # Editorial principle:
 #   The Brief = only the most consequential developments.
 #   Markets   = a dense financial-newspaper front page.
+#
+# V5.4:
+#   Adds real publisher/article image extraction.
+#   No stock images.
+#   No fabricated article images.
+#   Image failures never stop the news pipeline.
 #
 # No OpenAI/API calls.
 # No invented market data.
@@ -44,6 +50,12 @@ IPO_LOOKBACK_HOURS = 168
 MF_LOOKBACK_HOURS = 168
 
 MAX_FEED_ITEMS = 45
+
+# Image enrichment is intentionally conservative:
+# prefer images supplied by the feed, then inspect the article page
+# only when the feed provides no usable image.
+IMAGE_PAGE_CONCURRENCY = 8
+IMAGE_PAGE_TIMEOUT = 10.0
 
 MIN_CLUSTER_SCORE = 18
 BRIEF_MIN_SCORE = 43
@@ -886,6 +898,378 @@ def text_of(node, names):
 
 
 # ============================================================
+# STORY IMAGES
+# ============================================================
+
+IMAGE_EXT_RE = re.compile(
+    r"\.(?:jpe?g|png|webp|avif)(?:$|[?#])",
+    re.I,
+)
+
+BAD_IMAGE_RE = re.compile(
+    r"(?:favicon|logo|icon|avatar|sprite|tracking|pixel|spacer|"
+    r"badge|author|profile|emoji|1x1|blank\.gif)",
+    re.I,
+)
+
+META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.I)
+IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.I)
+ATTR_RE = re.compile(
+    r"""([:\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+    re.I,
+)
+
+
+def html_attrs(tag):
+    attrs = {}
+
+    for match in ATTR_RE.finditer(tag or ""):
+        name = match.group(1).lower()
+        value = next(
+            (
+                item
+                for item in match.groups()[1:]
+                if item is not None
+            ),
+            "",
+        )
+        attrs[name] = unescape(value).strip()
+
+    return attrs
+
+
+def usable_image_url(value, base_url=None):
+    if not value:
+        return None
+
+    value = unescape(str(value)).strip()
+
+    if not value or value.startswith(
+        (
+            "data:",
+            "blob:",
+            "javascript:",
+        )
+    ):
+        return None
+
+    if base_url:
+        value = urljoin(base_url, value)
+
+    parsed = urlparse(value)
+
+    if parsed.scheme not in {"http", "https"}:
+        return None
+
+    lowered = value.lower()
+
+    if BAD_IMAGE_RE.search(lowered):
+        return None
+
+    # Reject common explicit tiny-image dimensions in query strings.
+    if re.search(
+        r"(?:[?&](?:w|width)=([1-9]|[1-9]\d)(?:&|$)|"
+        r"[?&](?:h|height)=([1-9]|[1-9]\d)(?:&|$))",
+        lowered,
+    ):
+        return None
+
+    return value
+
+
+def image_from_html(value, base_url=None):
+    if not value:
+        return None
+
+    for tag in IMG_TAG_RE.findall(value):
+        attrs = html_attrs(tag)
+
+        for attr_name in (
+            "src",
+            "data-src",
+            "data-original",
+            "data-lazy-src",
+        ):
+            candidate = usable_image_url(
+                attrs.get(attr_name),
+                base_url,
+            )
+
+            if candidate:
+                return candidate
+
+        srcset = (
+            attrs.get("srcset")
+            or attrs.get("data-srcset")
+        )
+
+        if srcset:
+            candidates = []
+
+            for part in srcset.split(","):
+                bits = part.strip().split()
+
+                if not bits:
+                    continue
+
+                candidate = usable_image_url(
+                    bits[0],
+                    base_url,
+                )
+
+                if candidate:
+                    candidates.append(candidate)
+
+            if candidates:
+                return candidates[-1]
+
+    return None
+
+
+def image_from_feed_node(
+    node,
+    link,
+    raw_description,
+):
+    candidates = []
+
+    for child in node.iter():
+        child_tag = (
+            child.tag
+            .split("}")[-1]
+            .lower()
+        )
+
+        if child_tag in {
+            "content",
+            "thumbnail",
+            "enclosure",
+        }:
+            candidate = (
+                child.attrib.get("url")
+                or child.attrib.get("href")
+            )
+
+            medium = (
+                child.attrib.get("medium")
+                or child.attrib.get("type")
+                or ""
+            ).lower()
+
+            if (
+                child_tag == "enclosure"
+                and medium
+                and "image" not in medium
+                and not IMAGE_EXT_RE.search(
+                    candidate or ""
+                )
+            ):
+                continue
+
+            if (
+                child_tag
+                in {
+                    "content",
+                    "thumbnail",
+                }
+                and medium
+                and "image" not in medium
+                and medium
+                not in {
+                    "photo",
+                    "picture",
+                }
+                and not IMAGE_EXT_RE.search(
+                    candidate or ""
+                )
+            ):
+                continue
+
+            candidate = usable_image_url(
+                candidate,
+                link,
+            )
+
+            if candidate:
+                candidates.append(
+                    candidate
+                )
+
+        if child_tag == "link":
+            rel = (
+                child.attrib
+                .get("rel", "")
+                .lower()
+            )
+
+            mime = (
+                child.attrib
+                .get("type", "")
+                .lower()
+            )
+
+            if (
+                rel == "enclosure"
+                and "image" in mime
+            ):
+                candidate = usable_image_url(
+                    child.attrib.get(
+                        "href"
+                    ),
+                    link,
+                )
+
+                if candidate:
+                    candidates.append(
+                        candidate
+                    )
+
+    embedded = image_from_html(
+        raw_description,
+        link,
+    )
+
+    if embedded:
+        candidates.append(
+            embedded
+        )
+
+    return (
+        candidates[0]
+        if candidates
+        else None
+    )
+
+
+def image_from_article_html(
+    html,
+    page_url,
+):
+    preferred = {
+        "og:image",
+        "og:image:url",
+        "og:image:secure_url",
+        "twitter:image",
+        "twitter:image:src",
+    }
+
+    for tag in META_TAG_RE.findall(
+        html or ""
+    ):
+        attrs = html_attrs(tag)
+
+        meta_key = (
+            attrs.get("property")
+            or attrs.get("name")
+            or ""
+        ).lower()
+
+        if meta_key not in preferred:
+            continue
+
+        candidate = usable_image_url(
+            attrs.get("content"),
+            page_url,
+        )
+
+        if candidate:
+            return candidate
+
+    return image_from_html(
+        html,
+        page_url,
+    )
+
+
+async def enrich_article_image(
+    client,
+    article,
+    semaphore,
+):
+    if article.get("image_url"):
+        return
+
+    article_url = article.get("url")
+
+    if not article_url:
+        return
+
+    async with semaphore:
+        try:
+            response = await client.get(
+                article_url,
+                timeout=IMAGE_PAGE_TIMEOUT,
+            )
+
+            response.raise_for_status()
+
+            content_type = (
+                response.headers
+                .get(
+                    "content-type",
+                    "",
+                )
+                .lower()
+            )
+
+            if "html" not in content_type:
+                return
+
+            # Metadata normally appears near the top of
+            # the document. Limit parsing to avoid carrying
+            # huge article pages in memory unnecessarily.
+            html = response.text[
+                :500_000
+            ]
+
+            article["image_url"] = (
+                image_from_article_html(
+                    html,
+                    str(response.url),
+                )
+            )
+
+        except Exception:
+            # Image enrichment must never fail
+            # the intelligence pipeline.
+            return
+
+
+def choose_cluster_image(
+    members,
+    primary,
+):
+    preferred = usable_image_url(
+        primary.get("image_url")
+    )
+
+    if preferred:
+        return preferred
+
+    ranked = sorted(
+        members,
+        key=lambda article: (
+            article_signal(article),
+            article.get(
+                "published_at",
+                "",
+            ),
+        ),
+        reverse=True,
+    )
+
+    for article in ranked:
+        candidate = usable_image_url(
+            article.get("image_url")
+        )
+
+        if candidate:
+            return candidate
+
+    return None
+
+
+# ============================================================
 # RSS
 # ============================================================
 
@@ -895,14 +1279,24 @@ def parse_feed(data):
     output = []
 
     for node in root.iter():
-        tag = node.tag.split("}")[-1].lower()
+        tag = (
+            node.tag
+            .split("}")[-1]
+            .lower()
+        )
 
-        if tag not in {"item", "entry"}:
+        if tag not in {
+            "item",
+            "entry",
+        }:
             continue
 
-        title = text_of(node, {"title"})
+        title = text_of(
+            node,
+            {"title"},
+        )
 
-        description = text_of(
+        raw_description = text_of(
             node,
             {
                 "description",
@@ -922,81 +1316,163 @@ def parse_feed(data):
             },
         )
 
-        link = text_of(node, {"link"})
+        link = text_of(
+            node,
+            {"link"},
+        )
 
         if not link:
             for child in list(node):
-                child_tag = child.tag.split("}")[-1].lower()
+                child_tag = (
+                    child.tag
+                    .split("}")[-1]
+                    .lower()
+                )
 
                 if (
                     child_tag == "link"
-                    and child.attrib.get("href")
+                    and child.attrib.get(
+                        "href"
+                    )
+                    and child.attrib.get(
+                        "rel",
+                        "alternate",
+                    )
+                    in {
+                        "alternate",
+                        "",
+                    }
                 ):
-                    link = child.attrib["href"]
+                    link = child.attrib[
+                        "href"
+                    ]
                     break
 
-        title = clean_html(title)
-        description = clean_html(description)
+        title = clean_html(
+            title
+        )
+
+        description = clean_html(
+            raw_description
+        )
 
         if title and link:
+            link = link.strip()
+
             output.append(
                 {
-                    "title": title,
-                    "description": description,
-                    "url": link.strip(),
-                    "published_at": parse_date(date),
+                    "title":
+                        title,
+
+                    "description":
+                        description,
+
+                    "url":
+                        link,
+
+                    "published_at":
+                        parse_date(
+                            date
+                        ),
+
+                    "image_url":
+                        image_from_feed_node(
+                            node,
+                            link,
+                            raw_description,
+                        ),
                 }
             )
 
-    return output[:MAX_FEED_ITEMS]
+    return output[
+        :MAX_FEED_ITEMS
+    ]
 
 
-async def fetch(client, source):
-    checked = datetime.now(timezone.utc).isoformat()
+async def fetch(
+    client,
+    source,
+):
+    checked = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     try:
-        response = await client.get(source["url"])
+        response = await client.get(
+            source["url"]
+        )
+
         response.raise_for_status()
 
-        rows = parse_feed(response.content)
+        rows = parse_feed(
+            response.content
+        )
 
         for row in rows:
             row.update(
                 {
-                    "source": source["name"],
-                    "source_weight": source["weight"],
-                    "base_category": source["category"],
-                    "primary_source": source.get(
-                        "primary",
-                        False,
-                    ),
+                    "source":
+                        source["name"],
+
+                    "source_weight":
+                        source["weight"],
+
+                    "base_category":
+                        source["category"],
+
+                    "primary_source":
+                        source.get(
+                            "primary",
+                            False,
+                        ),
                 }
             )
 
         return rows, {
-            "source": source["name"],
-            "category": source["category"],
-            "ok": True,
-            "item_count": len(rows),
-            "checked_at": checked,
-            "error": None,
+            "source":
+                source["name"],
+
+            "category":
+                source["category"],
+
+            "ok":
+                True,
+
+            "item_count":
+                len(rows),
+
+            "checked_at":
+                checked,
+
+            "error":
+                None,
         }
 
     except Exception as exc:
         return [], {
-            "source": source["name"],
-            "category": source["category"],
-            "ok": False,
-            "item_count": 0,
-            "checked_at": checked,
-            "error": str(exc)[:180],
+            "source":
+                source["name"],
+
+            "category":
+                source["category"],
+
+            "ok":
+                False,
+
+            "item_count":
+                0,
+
+            "checked_at":
+                checked,
+
+            "error":
+                str(exc)[:180],
         }
 
 
 # ============================================================
 # CLASSIFICATION
 # ============================================================
-
 def classify(article):
     text = (
         article["title"]
@@ -1233,10 +1709,14 @@ def market_context(text):
             "electronics, autos, technology hardware and manufacturing."
         )
 
-    channels = list(dict.fromkeys(channels))
+    channels = list(
+        dict.fromkeys(channels)
+    )
 
     return (
-        explanations[0] if explanations else None,
+        explanations[0]
+        if explanations
+        else None,
         channels[:5],
     )
 
@@ -1266,7 +1746,9 @@ def article_signal(article):
         28 - age * 0.7,
     )
 
-    if article.get("primary_source"):
+    if article.get(
+        "primary_source"
+    ):
         score += 10
 
     if SYSTEMIC.search(text):
@@ -1306,7 +1788,8 @@ def article_signal(article):
     # Material corporate event > random stock movement.
 
     if (
-        article["category"] == "Companies & Earnings"
+        article["category"]
+        == "Companies & Earnings"
         and MATERIAL_COMPANY_EVENT.search(text)
     ):
         score += 10
@@ -1314,7 +1797,8 @@ def article_signal(article):
     # Useful mutual-fund information > promotional content.
 
     if (
-        article["category"] == "Mutual Funds"
+        article["category"]
+        == "Mutual Funds"
         and MF_SYSTEMIC.search(text)
     ):
         score += 9
@@ -1322,7 +1806,8 @@ def article_signal(article):
     # Useful IPO status signal.
 
     if (
-        article["category"] == "IPO"
+        article["category"]
+        == "IPO"
         and (
             IPO_OPEN.search(text)
             or IPO_UPCOMING.search(text)
@@ -1331,17 +1816,25 @@ def article_signal(article):
     ):
         score += 8
 
-    impact, channels = market_context(text)
+    impact, channels = market_context(
+        text
+    )
 
     if (
-        article["category"] == "Global → India"
+        article["category"]
+        == "Global → India"
         and channels
     ):
         score += 10
 
-    score -= noise_penalty(article)
+    score -= noise_penalty(
+        article
+    )
 
-    return round(score, 2)
+    return round(
+        score,
+        2,
+    )
 
 
 # ============================================================
@@ -1387,12 +1880,19 @@ def choose_primary(members):
         key=lambda x: (
             article_signal(x)
             + min(
-                len(x.get("description", "")),
+                len(
+                    x.get(
+                        "description",
+                        "",
+                    )
+                ),
                 700,
             ) / 100
             + (
                 6
-                if x.get("primary_source")
+                if x.get(
+                    "primary_source"
+                )
                 else 0
             )
         ),
@@ -1441,7 +1941,10 @@ def choose_description(members):
     if len(text) > 850:
         text = (
             text[:847]
-            .rsplit(" ", 1)[0]
+            .rsplit(
+                " ",
+                1,
+            )[0]
             + "…"
         )
 
@@ -1476,9 +1979,13 @@ def importance_label(
 
 
 def make_cluster(members):
-    primary = choose_primary(members)
+    primary = choose_primary(
+        members
+    )
 
-    category = choose_category(members)
+    category = choose_category(
+        members
+    )
 
     sources = sorted(
         set(
@@ -1503,7 +2010,9 @@ def make_cluster(members):
     official_bonus = (
         6
         if any(
-            x.get("primary_source")
+            x.get(
+                "primary_source"
+            )
             for x in members
         )
         else 0
@@ -1552,9 +2061,19 @@ def make_cluster(members):
         members
     )
 
+    # Prefer the primary article's genuine image. If the primary
+    # article has none, use the best available image from another
+    # article reporting the same clustered development.
+    image_url = choose_cluster_image(
+        members,
+        primary,
+    )
+
     return {
         "cluster_key":
-            stable_key(primary["title"]),
+            stable_key(
+                primary["title"]
+            ),
 
         "title":
             primary["title"],
@@ -1565,6 +2084,9 @@ def make_cluster(members):
         "brief":
             description,
 
+        "image_url":
+            image_url,
+
         "category":
             category,
 
@@ -1572,7 +2094,10 @@ def make_cluster(members):
             published,
 
         "importance":
-            round(importance, 2),
+            round(
+                importance,
+                2,
+            ),
 
         "importance_label":
             label,
@@ -1590,7 +2115,9 @@ def make_cluster(members):
             sorted(
                 members,
                 key=lambda x:
-                    x["published_at"],
+                    x[
+                        "published_at"
+                    ],
                 reverse=True,
             ),
 
@@ -1619,12 +2146,16 @@ def cluster_articles(rows):
     used = set()
     clusters = []
 
-    for i, article in enumerate(rows):
+    for i, article in enumerate(
+        rows
+    ):
 
         if i in used:
             continue
 
-        members = [article]
+        members = [
+            article
+        ]
 
         used.add(i)
 
@@ -1632,7 +2163,9 @@ def cluster_articles(rows):
             article["title"]
         )
 
-        for j, candidate in enumerate(rows):
+        for j, candidate in enumerate(
+            rows
+        ):
 
             if j in used:
                 continue
@@ -1646,33 +2179,44 @@ def cluster_articles(rows):
                 "Mutual Funds",
             }:
                 if (
-                    candidate["category"]
-                    != article["category"]
+                    candidate[
+                        "category"
+                    ]
+                    != article[
+                        "category"
+                    ]
                 ):
                     continue
 
             try:
-                a_time = datetime.fromisoformat(
-                    article[
-                        "published_at"
-                    ].replace(
-                        "Z",
-                        "+00:00",
+                a_time = (
+                    datetime
+                    .fromisoformat(
+                        article[
+                            "published_at"
+                        ].replace(
+                            "Z",
+                            "+00:00",
+                        )
                     )
                 )
 
-                b_time = datetime.fromisoformat(
-                    candidate[
-                        "published_at"
-                    ].replace(
-                        "Z",
-                        "+00:00",
+                b_time = (
+                    datetime
+                    .fromisoformat(
+                        candidate[
+                            "published_at"
+                        ].replace(
+                            "Z",
+                            "+00:00",
+                        )
                     )
                 )
 
                 if abs(
                     (
-                        a_time - b_time
+                        a_time
+                        - b_time
                     ).total_seconds()
                 ) > 60 * 3600:
                     continue
@@ -1690,11 +2234,15 @@ def cluster_articles(rows):
             )
 
             a_words = set(
-                words(article["title"])
+                words(
+                    article["title"]
+                )
             )
 
             b_words = set(
-                words(candidate["title"])
+                words(
+                    candidate["title"]
+                )
             )
 
             common = (
@@ -1715,7 +2263,9 @@ def cluster_articles(rows):
 
             same_category = (
                 article["category"]
-                == candidate["category"]
+                == candidate[
+                    "category"
+                ]
             )
 
             threshold = (
@@ -1725,18 +2275,25 @@ def cluster_articles(rows):
             )
 
             if (
-                similarity >= threshold
+                similarity
+                >= threshold
                 or (
-                    overlap >= 0.50
-                    and len(common) >= 3
+                    overlap
+                    >= 0.50
+                    and len(common)
+                    >= 3
                 )
             ):
-                members.append(candidate)
+                members.append(
+                    candidate
+                )
 
                 used.add(j)
 
         clusters.append(
-            make_cluster(members)
+            make_cluster(
+                members
+            )
         )
 
     return sorted(
@@ -1774,27 +2331,47 @@ CATEGORY_CAPS = {
 }
 
 CATEGORY_FAMILIES = {
-    "India": "india",
-    "Indian Politics": "india",
+    "India":
+        "india",
 
-    "Macro Economics": "economy",
+    "Indian Politics":
+        "india",
 
-    "Business & Micro": "business",
-    "Companies & Earnings": "business",
+    "Macro Economics":
+        "economy",
 
-    "Indian Markets": "markets",
-    "Global → India": "markets",
+    "Business & Micro":
+        "business",
 
-    "World": "world",
-    "World Politics": "world",
-    "Geopolitics": "world",
+    "Companies & Earnings":
+        "business",
 
-    "AI": "technology",
-    "Technology": "technology",
+    "Indian Markets":
+        "markets",
 
-    "Science & Climate": "science",
+    "Global → India":
+        "markets",
 
-    "The Ken": "special",
+    "World":
+        "world",
+
+    "World Politics":
+        "world",
+
+    "Geopolitics":
+        "world",
+
+    "AI":
+        "technology",
+
+    "Technology":
+        "technology",
+
+    "Science & Climate":
+        "science",
+
+    "The Ken":
+        "special",
 }
 
 
@@ -1831,20 +2408,31 @@ def select_brief(clusters):
 
     for cluster in eligible:
 
-        category = cluster["category"]
+        category = cluster[
+            "category"
+        ]
 
         family = CATEGORY_FAMILIES.get(
             category,
             category,
         )
 
-        if family_counts[family] >= 1:
+        if family_counts[
+            family
+        ] >= 1:
             continue
 
-        selected.append(cluster)
+        selected.append(
+            cluster
+        )
 
-        category_counts[category] += 1
-        family_counts[family] += 1
+        category_counts[
+            category
+        ] += 1
+
+        family_counts[
+            family
+        ] += 1
 
         if len(selected) >= 6:
             break
@@ -1859,7 +2447,9 @@ def select_brief(clusters):
         if cluster in selected:
             continue
 
-        category = cluster["category"]
+        category = cluster[
+            "category"
+        ]
 
         family = CATEGORY_FAMILIES.get(
             category,
@@ -1867,7 +2457,9 @@ def select_brief(clusters):
         )
 
         if (
-            category_counts[category]
+            category_counts[
+                category
+            ]
             >= CATEGORY_CAPS.get(
                 category,
                 1,
@@ -1875,15 +2467,26 @@ def select_brief(clusters):
         ):
             continue
 
-        if family_counts[family] >= 2:
+        if family_counts[
+            family
+        ] >= 2:
             continue
 
-        selected.append(cluster)
+        selected.append(
+            cluster
+        )
 
-        category_counts[category] += 1
-        family_counts[family] += 1
+        category_counts[
+            category
+        ] += 1
 
-    return selected[:BRIEF_MAX]
+        family_counts[
+            family
+        ] += 1
+
+    return selected[
+        :BRIEF_MAX
+    ]
 
 
 # ============================================================
@@ -1964,13 +2567,19 @@ def extract_lot_size(text):
 
 
 def ipo_status(text):
-    if IPO_LISTED.search(text):
+    if IPO_LISTED.search(
+        text
+    ):
         return "RECENTLY LISTED"
 
-    if IPO_OPEN.search(text):
+    if IPO_OPEN.search(
+        text
+    ):
         return "OPEN NOW"
 
-    if IPO_UPCOMING.search(text):
+    if IPO_UPCOMING.search(
+        text
+    ):
         return "UPCOMING"
 
     return "IPO UPDATE"
@@ -1985,15 +2594,23 @@ def extract_ipo_name(title):
         flags=re.I,
     )
 
-    if len(value.strip()) < 3:
+    if len(
+        value.strip()
+    ) < 3:
         return title[:100]
 
-    return value.strip()[:100]
+    return (
+        value
+        .strip()[:100]
+    )
 
 
 def useful_ipo_text(story):
     text = clean_html(
-        story.get("description", "")
+        story.get(
+            "description",
+            "",
+        )
     )
 
     if not text:
@@ -2003,7 +2620,9 @@ def useful_ipo_text(story):
 
     if len(parts) > 50:
         text = (
-            " ".join(parts[:50])
+            " ".join(
+                parts[:50]
+            )
             + "…"
         )
 
@@ -2017,7 +2636,10 @@ def build_ipo_data(clusters):
 
     for story in clusters:
 
-        if story["category"] != "IPO":
+        if (
+            story["category"]
+            != "IPO"
+        ):
             continue
 
         text = (
@@ -2029,7 +2651,9 @@ def build_ipo_data(clusters):
             )
         )
 
-        status = ipo_status(text)
+        status = ipo_status(
+            text
+        )
 
         # Don't pretend a generic IPO mention is an
         # active/upcoming/listed issue.
@@ -2050,13 +2674,19 @@ def build_ipo_data(clusters):
                 None,
 
             "price_band":
-                extract_price_band(text),
+                extract_price_band(
+                    text
+                ),
 
             "issue_size":
-                extract_issue_size(text),
+                extract_issue_size(
+                    text
+                ),
 
             "lot_size":
-                extract_lot_size(text),
+                extract_lot_size(
+                    text
+                ),
 
             "close_date":
                 None,
@@ -2065,7 +2695,9 @@ def build_ipo_data(clusters):
                 None,
 
             "what_to_know":
-                useful_ipo_text(story),
+                useful_ipo_text(
+                    story
+                ),
 
             "url":
                 story["primary"].get(
@@ -2078,17 +2710,25 @@ def build_ipo_data(clusters):
                 ),
 
             "published_at":
-                story["published_at"],
+                story[
+                    "published_at"
+                ],
         }
 
         if status == "OPEN NOW":
-            open_items.append(item)
+            open_items.append(
+                item
+            )
 
         elif status == "UPCOMING":
-            upcoming_items.append(item)
+            upcoming_items.append(
+                item
+            )
 
         elif status == "RECENTLY LISTED":
-            recent_items.append(item)
+            recent_items.append(
+                item
+            )
 
     return {
         "ipo_open":
@@ -2104,8 +2744,11 @@ def build_ipo_data(clusters):
 
 # ============================================================
 # MUTUAL FUNDS
+# ============================================================
 
-def build_mutual_fund_data(clusters):
+def build_mutual_fund_data(
+    clusters
+):
     stories = [
         story
         for story in clusters
@@ -2135,8 +2778,12 @@ def build_mutual_fund_data(clusters):
             )
         )
 
-        if MF_SYSTEMIC.search(text):
-            flow_stories.append(story)
+        if MF_SYSTEMIC.search(
+            text
+        ):
+            flow_stories.append(
+                story
+            )
 
     return {
         "mutual_fund_news":
@@ -2157,7 +2804,9 @@ def build_mutual_fund_data(clusters):
 # ============================================================
 
 def build_markets(clusters):
-    ipo = build_ipo_data(clusters)
+    ipo = build_ipo_data(
+        clusters
+    )
 
     mf = build_mutual_fund_data(
         clusters
@@ -2174,7 +2823,9 @@ def build_markets(clusters):
             ipo["ipo_recent"],
 
         "mutual_fund_news":
-            mf["mutual_fund_news"],
+            mf[
+                "mutual_fund_news"
+            ],
 
         "fund_flows":
             mf["fund_flows"],
@@ -2184,7 +2835,7 @@ def build_markets(clusters):
         "investor_conversation":
             [],
 
-        # Removed from the visible V5.3 interface.
+        # Removed from the visible V5.4 interface.
         "calendar":
             [],
     }
@@ -2193,11 +2844,10 @@ def build_markets(clusters):
 # ============================================================
 # MAIN
 # ============================================================
-
 async def main():
     headers = {
         "User-Agent":
-            "DailyIntelligence/5.3 "
+            "DailyIntelligence/5.4 "
             "(personal RSS intelligence reader)"
     }
 
@@ -2222,20 +2872,49 @@ async def main():
             ]
         )
 
-    health = [
-        status
-        for _,
-        status
-        in results
-    ]
+        health = [
+            status
+            for _,
+            status
+            in results
+        ]
 
-    incoming = [
-        article
-        for batch, _
-        in results
-        for article
-        in batch
-    ]
+        incoming = [
+            article
+            for batch, _
+            in results
+            for article
+            in batch
+        ]
+
+        # ====================================================
+        # IMAGE ENRICHMENT
+        #
+        # RSS/Atom images have already been extracted.
+        # For articles that still have no image, inspect the
+        # publisher page for og:image / twitter:image.
+        #
+        # Best effort only:
+        # image failures must never fail the news pipeline.
+        # ====================================================
+
+        image_semaphore = asyncio.Semaphore(
+            IMAGE_PAGE_CONCURRENCY
+        )
+
+        await asyncio.gather(
+            *[
+                enrich_article_image(
+                    client,
+                    article,
+                    image_semaphore,
+                )
+                for article in incoming
+                if not article.get(
+                    "image_url"
+                )
+            ]
+        )
 
     now = datetime.now(
         timezone.utc
@@ -2253,12 +2932,15 @@ async def main():
         )
 
         try:
-            published = datetime.fromisoformat(
-                article[
-                    "published_at"
-                ].replace(
-                    "Z",
-                    "+00:00",
+            published = (
+                datetime
+                .fromisoformat(
+                    article[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00",
+                    )
                 )
             )
 
@@ -2269,34 +2951,48 @@ async def main():
         except Exception:
             age = 999
 
-        category = article["category"]
+        category = article[
+            "category"
+        ]
 
         if category == "IPO":
-            max_age = IPO_LOOKBACK_HOURS
+            max_age = (
+                IPO_LOOKBACK_HOURS
+            )
 
         elif category == "Mutual Funds":
-            max_age = MF_LOOKBACK_HOURS
+            max_age = (
+                MF_LOOKBACK_HOURS
+            )
 
         elif category in {
             "Indian Markets",
             "Global → India",
             "Companies & Earnings",
         }:
-            max_age = MARKET_LOOKBACK_HOURS
+            max_age = (
+                MARKET_LOOKBACK_HOURS
+            )
 
         else:
-            max_age = LOOKBACK_HOURS
+            max_age = (
+                LOOKBACK_HOURS
+            )
 
         if age > max_age:
             stale_filtered += 1
             continue
 
-        if should_drop(article):
+        if should_drop(
+            article
+        ):
             noise_filtered += 1
             continue
 
-        article["signal_score"] = (
-            article_signal(article)
+        article[
+            "signal_score"
+        ] = article_signal(
+            article
         )
 
         # URL dedupe.
@@ -2333,7 +3029,7 @@ async def main():
 
     payload = {
         "version":
-            "5.3",
+            "5.4",
 
         "generated_at":
             generated,
@@ -2354,7 +3050,7 @@ async def main():
             stale_filtered,
 
         "clustering_mode":
-            "editorial-markets-v5.3",
+            "editorial-markets-v5.4",
 
         "summary_mode":
             "source-brief",
@@ -2444,7 +3140,9 @@ async def main():
     archives = []
 
     for path in sorted(
-        ARCHIVE.glob("*.json"),
+        ARCHIVE.glob(
+            "*.json"
+        ),
         reverse=True,
     )[:60]:
 
@@ -2550,43 +3248,95 @@ async def main():
     critical = sum(
         1
         for x in top
-        if x["importance_label"]
+        if x[
+            "importance_label"
+        ]
         == "critical"
+    )
+
+    # Image QA.
+    clusters_with_images = sum(
+        1
+        for x in clusters
+        if x.get(
+            "image_url"
+        )
+    )
+
+    brief_with_images = sum(
+        1
+        for x in top
+        if x.get(
+            "image_url"
+        )
+    )
+
+    articles_with_images = sum(
+        1
+        for x in rows
+        if x.get(
+            "image_url"
+        )
     )
 
     print(
         "\n"
         "============================================\n"
-        "DAILY INTELLIGENCE V5.3\n"
+        "DAILY INTELLIGENCE V5.4\n"
         "============================================"
     )
 
     print(
-        f"Useful articles:       {len(rows)}"
+        f"Useful articles:       "
+        f"{len(rows)}"
     )
 
     print(
-        f"Clusters:              {len(clusters)}"
+        f"Articles with images:  "
+        f"{articles_with_images}/"
+        f"{len(rows)}"
     )
 
     print(
-        f"Brief stories:         {len(top)}"
+        f"Clusters:              "
+        f"{len(clusters)}"
     )
 
     print(
-        f"Critical stories:      {critical}"
+        f"Clusters with images:  "
+        f"{clusters_with_images}/"
+        f"{len(clusters)}"
     )
 
     print(
-        f"Indian Markets:        {india_market}"
+        f"Brief stories:         "
+        f"{len(top)}"
     )
 
     print(
-        f"Global -> India:       {global_india}"
+        f"Brief with images:     "
+        f"{brief_with_images}/"
+        f"{len(top)}"
     )
 
     print(
-        f"Companies & Earnings:  {companies}"
+        f"Critical stories:      "
+        f"{critical}"
+    )
+
+    print(
+        f"Indian Markets:        "
+        f"{india_market}"
+    )
+
+    print(
+        f"Global -> India:       "
+        f"{global_india}"
+    )
+
+    print(
+        f"Companies & Earnings:  "
+        f"{companies}"
     )
 
     print(
@@ -2610,11 +3360,13 @@ async def main():
     )
 
     print(
-        f"Noise filtered:        {noise_filtered}"
+        f"Noise filtered:        "
+        f"{noise_filtered}"
     )
 
     print(
-        f"Stale filtered:        {stale_filtered}"
+        f"Stale filtered:        "
+        f"{stale_filtered}"
     )
 
     print(
@@ -2639,4 +3391,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(
+        main()
+    )
