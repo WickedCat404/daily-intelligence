@@ -1,65 +1,2098 @@
-const CATEGORIES = [
-  ['BRIEFING',['Top 8','Since Last Visit','Bookmarks','Archives']],
-  ['INDIA',['India','Indian Politics']],
-  ['WORLD',['World','World Politics','Geopolitics']],
-  ['ECONOMY',['Macro Economics','Business & Micro']],
-  ['FRONTIER',['AI','Technology','Science & Climate']],
-  ['DEEP READS',['The Ken']],
-  ['SYSTEM',['Source Health']]
-];
-const subtitles={
-  'Top 8':'The smallest useful briefing across the biggest domains.',
-  'Since Last Visit':'Only developments published after your previous visit.',
-  'Bookmarks':'Your quiet reading list, stored in this browser.',
-  'Archives':'One saved morning snapshot per day.',
-  'India':'National developments without duplicating political coverage.',
-  'Indian Politics':'Government, Parliament, parties, elections and policy in India.',
-  'World':'Major global developments outside the dedicated geopolitics lane.',
-  'World Politics':'Political developments beyond India.',
-  'Geopolitics':'Conflict, diplomacy, sanctions, strategic trade and shifts in global power.',
-  'Macro Economics':'Rates, inflation, growth, currency, fiscal policy and central banks.',
-  'Business & Micro':'Companies, sectors, competition, consumers and regulation.',
-  'AI':'Models, research, safety, policy and the business of AI.',
-  'Technology':'Important technology outside the dedicated AI lane.',
-  'Science & Climate':'Scientific advances, energy transition and climate developments.',
-  'The Ken':'The Ken headlines and excerpts. Open the original for subscriber content.',
-  'Source Health':'Which feeds succeeded in the latest scheduled refresh.'
+const DATA_URL = "./data/latest.json";
+const ARCHIVES_URL = "./data/archives.json";
+
+const state = {
+  data: null,
+  clusters: [],
+  top: [],
+  currentView: "brief",
+  currentCategory: null,
+  searchQuery: "",
+  saved: new Set(JSON.parse(localStorage.getItem("di_saved") || "[]")),
+  previousVisit: localStorage.getItem("di_last_visit"),
+  currentVisit: new Date().toISOString()
 };
-const glossary=[
-  {re:/\bbasis points?|bps\b/i,title:'Basis point',body:'One basis point is 0.01 percentage point. A 25 bps rate move is 0.25 percentage point.'},
-  {re:/\bbond yield|yields\b/i,title:'Bond yield',body:'The return implied by a bond’s market price. Rising yields often mean borrowing becomes more expensive and bond prices are falling.'},
-  {re:/\bcurrent account/i,title:'Current account',body:'A country’s broad balance of trade in goods, services, income and transfers with the rest of the world.'},
-  {re:/\bfiscal deficit/i,title:'Fiscal deficit',body:'The gap between a government’s total spending and its non-borrowed receipts. It must generally be financed through borrowing.'},
-  {re:/\bquantitative easing|\bQE\b/i,title:'Quantitative easing',body:'A central bank buys financial assets to add liquidity and push down longer-term borrowing costs.'},
-  {re:/\btoken|context window/i,title:'Context window',body:'The amount of information an AI model can consider in one interaction, usually measured in tokens.'},
-  {re:/\binference/i,title:'AI inference',body:'The stage where a trained model processes new input and generates an output. Inference cost and speed matter greatly at scale.'},
-  {re:/\bembargo|sanctions?\b/i,title:'Economic sanctions',body:'Restrictions used to limit trade, finance or access to assets. Their effect depends on enforcement, workarounds and who bears the cost.'},
-  {re:/\btariff/i,title:'Tariff',body:'A tax on imported goods. It can protect domestic producers, but may also raise input or consumer prices and trigger retaliation.'}
-];
-let state={view:'Top 8',data:null,lastVisit:localStorage.getItem('di.github.lastVisit'),bookmarks:new Set(JSON.parse(localStorage.getItem('di.github.bookmarks')||'[]'))};
-const nowISO=new Date().toISOString();
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function ago(iso){const d=new Date(iso),m=Math.max(1,Math.round((Date.now()-d)/60000));if(m<60)return `${m}m`;const h=Math.round(m/60);if(h<24)return `${h}h`;return `${Math.round(h/24)}d`}
-function sourcePills(x){return (x.articles||[]).filter((a,i,arr)=>arr.findIndex(b=>b.source===a.source)===i).slice(0,5).map((a,i)=>`<a class="source-pill" target="_blank" rel="noopener" href="${esc(a.url)}">S${i+1} · ${esc(a.source)}</a>`).join('')}
-function briefBlock(x){if(!x.summary_what)return '';return `<div class="brief"><div><b>What changed</b><span>${esc(x.summary_what)}</span></div><div><b>Why it matters</b><span>${esc(x.summary_why)}</span></div><div><b>Watch next</b><span>${esc(x.summary_watch)}</span></div></div>`}
-function card(x){const saved=state.bookmarks.has(x.cluster_key);const tags=[];if(x.category==='AI')tags.push('<span class="tag ai">AI</span>');if(x.source_count>1)tags.push(`<span class="tag multi">${x.source_count} sources</span>`);return `<article class="story"><div><div class="eyebrow">${esc(x.category)} · ${esc(x.sources?.[0]||'')}</div><h4><a target="_blank" rel="noopener" href="${esc(x.articles?.[0]?.url||'#')}">${esc(x.title)}</a></h4><p>${esc((x.description||'').slice(0,320))}</p><div class="source-row">${tags.join('')}${sourcePills(x)}</div>${briefBlock(x)}</div><div class="story-side"><span class="time">${ago(x.published_at)} ago</span><button class="star ${saved?'on':''}" onclick="toggleBookmark('${esc(x.cluster_key)}')">${saved?'★':'☆'}</button></div></article>`}
-function section(title,items,note=''){return `<section class="section"><div class="section-head"><h3>${esc(title)}</h3><span>${esc(note||`${items.length} stories`)}</span></div>${items.length?items.map(card).join(''):'<div class="empty">Nothing here yet.</div>'}</section>`}
-function renderNav(){document.getElementById('nav').innerHTML=CATEGORIES.map(([label,items])=>`<div class="nav-group"><div class="nav-label">${label}</div>${items.map(v=>`<button class="nav-btn ${state.view===v?'active':''}" onclick="selectView('${v.replaceAll("'","\\'")}')"><span>${v}</span></button>`).join('')}</div>`).join('')}
-function updatePulse(){const d=state.data||{};document.getElementById('pulse').innerHTML=`<span><b>${(d.top||[]).length}</b> essential stories</span><span><b>${d.article_count||0}</b> fetched articles</span><span><b>${d.cluster_count||0}</b> story clusters</span><span><b>${esc(d.clustering_mode||'lexical')}</b> clustering</span>`}
-function conceptFor(items){const text=items.map(x=>`${x.title} ${x.description}`).join(' ');return glossary.find(g=>g.re.test(text))||{title:'Signal vs noise',body:'Ask what actually changed, what is merely commentary, and which next factual event would invalidate today’s narrative.'}}
-function contextCards(items){const c=conceptFor(items);return `<div class="context-grid"><div class="context-card"><div class="kicker">Reading lens</div><h3>Three questions before you move on</h3><p>What actually changed? Who gains or loses? What next factual development would materially change the story?</p></div><div class="context-card concept"><div class="kicker">Concept in context</div><h3>${esc(c.title)}</h3><p>${esc(c.body)}</p></div></div>`}
-function topView(){const top=state.data.top||[];if(!top.length)return '<div class="empty">No stories were generated in the latest refresh.</div>';const first=top[0];return `<div class="lead"><div class="eyebrow">${esc(first.category)} · ${first.source_count} source${first.source_count===1?'':'s'} · ${ago(first.published_at)} ago</div><h3><a target="_blank" rel="noopener" href="${esc(first.articles?.[0]?.url||'#')}">${esc(first.title)}</a></h3><p>${esc((first.description||'').slice(0,480))}</p><div class="source-row">${sourcePills(first)}</div>${briefBlock(first)}</div>${contextCards(top)}${section('Essential today',top.slice(1),'Balanced across domains')}`}
-function categoryView(cat){const rows=(state.data.clusters||[]).filter(x=>x.category===cat).sort((a,b)=>new Date(b.published_at)-new Date(a.published_at));return section(cat,rows,`${rows.length} clustered stories`)}
-function sinceView(){const cutoff=state.lastVisit?new Date(state.lastVisit):new Date(Date.now()-24*3600000);const rows=(state.data.clusters||[]).filter(x=>new Date(x.published_at)>cutoff).sort((a,b)=>new Date(b.published_at)-new Date(a.published_at));return section('New developments',rows,`${rows.length} since ${state.lastVisit?'last visit':'24h'}`)}
-function bookmarksView(){const rows=(state.data.clusters||[]).filter(x=>state.bookmarks.has(x.cluster_key));return section('Saved',rows,`${rows.length} saved in this browser`)}
-function healthView(){const rows=state.data.sources||[];return `<section class="section"><div class="section-head"><h3>Source health</h3><span>${rows.filter(x=>x.ok).length}/${rows.length} healthy</span></div><table class="health-table"><thead><tr><th>Source</th><th>Category</th><th>Status</th><th>Items</th><th>Checked</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.source)}</td><td>${esc(x.category)}</td><td class="${x.ok?'ok':'bad'}">${x.ok?'OK':'Fail'}</td><td>${x.item_count||0}</td><td>${x.checked_at?new Date(x.checked_at).toLocaleString():'—'}</td></tr>`).join('')}</tbody></table></section>`}
-async function archivesView(){try{const r=await fetch(`./data/archives.json?t=${Date.now()}`);const rows=r.ok?await r.json():[];return `<section class="section"><div class="section-head"><h3>Daily archives</h3><span>${rows.length} snapshots</span></div><div class="archive-grid">${rows.map(x=>`<div class="archive-card" onclick="openArchive('${esc(x.date)}')"><b>${esc(x.date)}</b><span>${esc(x.count)} top stories</span></div>`).join('')||'<div class="empty">The first archive is created after 6:15 AM India time.</div>'}</div></section>`}catch{return '<div class="empty">Archive index unavailable.</div>'}}
-async function openArchive(date){const r=await fetch(`./data/archive/${date}.json?t=${Date.now()}`);if(!r.ok)return;const a=await r.json();document.getElementById('pageTitle').textContent=date;document.getElementById('pageSubtitle').textContent='Saved morning intelligence snapshot';document.getElementById('content').innerHTML=section('Top stories',a.top||[],`${(a.top||[]).length} archived stories`)}
-async function selectView(v){state.view=v;renderNav();document.getElementById('pageTitle').textContent=v;document.getElementById('pageSubtitle').textContent=subtitles[v]||'Focused, clustered coverage.';document.getElementById('content').innerHTML='<div class="loading">Loading…</div>';let html='';if(v==='Top 8')html=topView();else if(v==='Since Last Visit')html=sinceView();else if(v==='Bookmarks')html=bookmarksView();else if(v==='Archives')html=await archivesView();else if(v==='Source Health')html=healthView();else html=categoryView(v);document.getElementById('content').innerHTML=html}
-function toggleBookmark(key){state.bookmarks.has(key)?state.bookmarks.delete(key):state.bookmarks.add(key);localStorage.setItem('di.github.bookmarks',JSON.stringify([...state.bookmarks]));selectView(state.view)}
-function search(q){const s=q.trim().toLowerCase();if(!s)return selectView(state.view);const rows=(state.data.clusters||[]).filter(x=>(`${x.title} ${x.description} ${x.category} ${(x.sources||[]).join(' ')}`).toLowerCase().includes(s));document.getElementById('pageTitle').textContent=`Search: ${q}`;document.getElementById('pageSubtitle').textContent='Matches from the latest multi-day intelligence window.';document.getElementById('content').innerHTML=section('Search results',rows,`${rows.length} matches`)}
-async function loadData(){document.getElementById('statusText').textContent='Checking latest…';const r=await fetch(`./data/latest.json?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('latest.json not available yet');state.data=await r.json();document.getElementById('statusText').textContent=`Updated ${new Date(state.data.generated_at).toLocaleString([], {hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'})}`;updatePulse();await selectView(state.view)}
-document.getElementById('refreshBtn').onclick=()=>loadData().catch(e=>document.getElementById('statusText').textContent='Update unavailable');
-document.getElementById('searchInput').addEventListener('input',e=>{if(e.target.value.trim().length>=2)search(e.target.value);else if(!e.target.value.trim())selectView(state.view)});
-document.getElementById('themeBtn').onclick=()=>{const dark=document.documentElement.dataset.theme==='dark';document.documentElement.dataset.theme=dark?'light':'dark';localStorage.setItem('di.github.theme',dark?'light':'dark')};const theme=localStorage.getItem('di.github.theme');if(theme)document.documentElement.dataset.theme=theme;
-renderNav();loadData().catch(e=>{document.getElementById('content').innerHTML=`<div class="empty">${esc(e.message)}. Run the GitHub Action once, then reload.</div>`;document.getElementById('statusText').textContent='Waiting for first update'}).finally(()=>localStorage.setItem('di.github.lastVisit',nowISO));
+
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  body: document.body,
+  sidebar: $("sidebar"),
+  menuOverlay: $("menuOverlay"),
+  openMenu: $("openMenu"),
+  closeMenu: $("closeMenu"),
+
+  searchButton: $("searchButton"),
+  searchPanel: $("searchPanel"),
+  searchInput: $("searchInput"),
+  closeSearch: $("closeSearch"),
+
+  themeButton: $("themeButton"),
+
+  todayDate: $("todayDate"),
+  pageTitle: $("pageTitle"),
+  pageDescription: $("pageDescription"),
+
+  lastUpdated: $("lastUpdated"),
+  healthDot: $("healthDot"),
+  sidebarHealthDot: $("sidebarHealthDot"),
+  sidebarStatus: $("sidebarStatus"),
+
+  sinceLastPanel: $("sinceLastPanel"),
+  sinceSummary: $("sinceSummary"),
+  viewSinceButton: $("viewSinceButton"),
+
+  contentView: $("contentView"),
+  emptyState: $("emptyState"),
+
+  briefSection: $("briefSection"),
+  briefStories: $("briefStories"),
+  briefCount: $("briefCount"),
+
+  developingSection: $("developingSection"),
+  developingStories: $("developingStories"),
+  developingCount: $("developingCount"),
+
+  exploreSection: $("exploreSection"),
+  categoryGrid: $("categoryGrid"),
+
+  sourceSheet: $("sourceSheet"),
+  sheetBackdrop: $("sheetBackdrop"),
+  closeSheet: $("closeSheet"),
+  sheetTitle: $("sheetTitle"),
+  sheetSources: $("sheetSources")
+};
+
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+function parseDate(value) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date;
+}
+
+
+function timeAgo(value) {
+  const date = parseDate(value);
+
+  if (!date) return "";
+
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - date.getTime()) / 1000)
+  );
+
+  if (seconds < 60) return "just now";
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days === 1) return "yesterday";
+
+  return `${days}d ago`;
+}
+
+
+function shortDate(value) {
+  const date = parseDate(value);
+
+  if (!date) return "";
+
+  return new Intl.DateTimeFormat(
+    "en-IN",
+    {
+      day: "numeric",
+      month: "short"
+    }
+  ).format(date);
+}
+
+
+function longToday() {
+  return new Intl.DateTimeFormat(
+    "en-IN",
+    {
+      weekday: "long",
+      day: "numeric",
+      month: "long"
+    }
+  ).format(new Date());
+}
+
+
+function cleanText(value = "") {
+  const div = document.createElement("div");
+  div.innerHTML = value;
+
+  return (div.textContent || div.innerText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function truncateWords(text, maxWords = 90) {
+  const clean = cleanText(text);
+
+  if (!clean) return "";
+
+  const words = clean.split(/\s+/);
+
+  if (words.length <= maxWords) {
+    return clean;
+  }
+
+  let result = words
+    .slice(0, maxWords)
+    .join(" ");
+
+  result = result.replace(
+    /[,;:\-–—]\s*$/,
+    ""
+  );
+
+  return `${result}…`;
+}
+
+
+function usefulSummary(story) {
+  const primaryDescription =
+    story.description ||
+    story.primary?.description ||
+    "";
+
+  if (primaryDescription.trim()) {
+    return truncateWords(primaryDescription, 90);
+  }
+
+  const articleWithDescription =
+    (story.articles || []).find(
+      article =>
+        article.description &&
+        article.description.trim()
+    );
+
+  if (articleWithDescription) {
+    return truncateWords(
+      articleWithDescription.description,
+      90
+    );
+  }
+
+  return "";
+}
+
+
+function storyTimestamp(story) {
+  return (
+    story.published_at ||
+    story.primary?.published_at ||
+    story.articles?.[0]?.published_at ||
+    ""
+  );
+}
+
+
+function sourceNames(story) {
+  if (
+    Array.isArray(story.sources) &&
+    story.sources.length
+  ) {
+    return story.sources;
+  }
+
+  return [
+    ...new Set(
+      (story.articles || [])
+        .map(article => article.source)
+        .filter(Boolean)
+    )
+  ];
+}
+
+
+function sourceCount(story) {
+  const names = sourceNames(story);
+
+  if (names.length) return names.length;
+
+  return story.source_count || 1;
+}
+
+
+function storyKey(story) {
+  return (
+    story.cluster_key ||
+    story.url ||
+    story.title
+  );
+}
+
+
+function primaryUrl(story) {
+  return (
+    story.primary?.url ||
+    story.articles?.[0]?.url ||
+    story.url ||
+    "#"
+  );
+}
+
+
+function normalizedImportance(story) {
+  const score =
+    Number(story.importance) || 0;
+
+  const sources = sourceCount(story);
+
+  const ageHours = (() => {
+    const date = parseDate(
+      storyTimestamp(story)
+    );
+
+    if (!date) return 999;
+
+    return Math.max(
+      0,
+      (Date.now() - date.getTime()) /
+        3600000
+    );
+  })();
+
+  /*
+    These labels are intentionally conservative.
+
+    CRITICAL should be rare.
+    SIGNIFICANT is the normal "Brief" level.
+  */
+
+  if (
+    score >= 68 &&
+    sources >= 2 &&
+    ageHours <= 48
+  ) {
+    return "critical";
+  }
+
+  if (
+    score >= 42 ||
+    sources >= 2
+  ) {
+    return "significant";
+  }
+
+  return "noteworthy";
+}
+
+
+function importanceLabel(story) {
+  const level =
+    normalizedImportance(story);
+
+  if (level === "critical") {
+    return "Critical";
+  }
+
+  if (level === "significant") {
+    return "Significant";
+  }
+
+  return "Noteworthy";
+}
+
+
+function isNewSinceVisit(story) {
+  if (!state.previousVisit) return false;
+
+  const storyDate =
+    parseDate(storyTimestamp(story));
+
+  const previous =
+    parseDate(state.previousVisit);
+
+  if (!storyDate || !previous) {
+    return false;
+  }
+
+  return storyDate > previous;
+}
+
+
+function isDeveloping(story) {
+  const articles =
+    story.articles || [];
+
+  if (articles.length < 2) {
+    return false;
+  }
+
+  const timestamps = articles
+    .map(article =>
+      parseDate(article.published_at)
+    )
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  if (timestamps.length < 2) {
+    return false;
+  }
+
+  const first = timestamps[0];
+  const last =
+    timestamps[timestamps.length - 1];
+
+  const spreadHours =
+    (last - first) / 3600000;
+
+  const recentlyUpdated =
+    (Date.now() - last.getTime()) /
+      3600000 <= 18;
+
+  return (
+    spreadHours >= 1 &&
+    recentlyUpdated
+  );
+}
+
+
+function storyState(story) {
+  if (isDeveloping(story)) {
+    return "Updated";
+  }
+
+  if (isNewSinceVisit(story)) {
+    return "New";
+  }
+
+  return "";
+}
+
+
+function isSaved(story) {
+  return state.saved.has(
+    storyKey(story)
+  );
+}
+
+
+function toggleSaved(story) {
+  const key = storyKey(story);
+
+  if (state.saved.has(key)) {
+    state.saved.delete(key);
+  } else {
+    state.saved.add(key);
+  }
+
+  localStorage.setItem(
+    "di_saved",
+    JSON.stringify([...state.saved])
+  );
+
+  renderCurrentView();
+}
+
+
+function buildContext(story) {
+  const candidates = state.clusters
+    .filter(other =>
+      storyKey(other) !== storyKey(story)
+    )
+    .filter(other =>
+      other.category === story.category
+    )
+    .filter(other => {
+      const a = new Set(
+        String(story.title || "")
+          .toLowerCase()
+          .split(/\W+/)
+          .filter(word => word.length > 4)
+      );
+
+      const b = new Set(
+        String(other.title || "")
+          .toLowerCase()
+          .split(/\W+/)
+          .filter(word => word.length > 4)
+      );
+
+      const overlap =
+        [...a].filter(word =>
+          b.has(word)
+        ).length;
+
+      return overlap >= 2;
+    })
+    .sort(
+      (a, b) =>
+        new Date(storyTimestamp(b)) -
+        new Date(storyTimestamp(a))
+    )
+    .slice(0, 3);
+
+  return candidates;
+}
+
+
+function storyCard(story) {
+  const level =
+    normalizedImportance(story);
+
+  const label =
+    importanceLabel(story);
+
+  const summary =
+    usefulSummary(story);
+
+  const sources =
+    sourceNames(story);
+
+  const count =
+    sourceCount(story);
+
+  const stateLabel =
+    storyState(story);
+
+  const context =
+    buildContext(story);
+
+  const article = document.createElement(
+    "article"
+  );
+
+  article.className =
+    `story-card ${
+      level === "critical"
+        ? "is-critical"
+        : ""
+    }`;
+
+  const contextHtml =
+    context.length
+      ? `
+        <div class="context-box hidden">
+          <div class="context-title">
+            Related context
+          </div>
+
+          ${context
+            .map(item => `
+              <div class="context-item">
+                <span class="context-date">
+                  ${escapeHtml(
+                    shortDate(
+                      storyTimestamp(item)
+                    )
+                  )}
+                </span>
+
+                <span class="context-headline">
+                  ${escapeHtml(item.title)}
+                </span>
+              </div>
+            `)
+            .join("")}
+        </div>
+      `
+      : "";
+
+  article.innerHTML = `
+    <div class="story-topline">
+
+      <span
+        class="importance-label ${level}"
+      >
+        ${escapeHtml(label)}
+      </span>
+
+      <span class="category-label">
+        ${escapeHtml(
+          story.category || "News"
+        )}
+      </span>
+
+      ${
+        stateLabel
+          ? `
+            <span class="story-state">
+              ${escapeHtml(stateLabel)}
+            </span>
+          `
+          : ""
+      }
+
+    </div>
+
+
+    <h3 class="story-title">
+      ${escapeHtml(story.title || "")}
+    </h3>
+
+
+    ${
+      summary
+        ? `
+          <p class="story-summary">
+            ${escapeHtml(summary)}
+          </p>
+        `
+        : ""
+    }
+
+
+    <div class="story-meta">
+
+      <span>
+        ${
+          count === 1
+            ? escapeHtml(
+                sources[0] || "1 source"
+              )
+            : `${count} sources`
+        }
+      </span>
+
+      <span class="meta-separator">
+        ·
+      </span>
+
+      <span>
+        ${escapeHtml(
+          timeAgo(
+            storyTimestamp(story)
+          )
+        )}
+      </span>
+
+    </div>
+
+
+    <div class="story-actions">
+
+      ${
+        context.length
+          ? `
+            <button
+              class="story-action context-button"
+              type="button"
+            >
+              Context
+            </button>
+          `
+          : ""
+      }
+
+      <button
+        class="story-action coverage-button"
+        type="button"
+      >
+        ${
+          count > 1
+            ? "View coverage"
+            : "Source"
+        }
+      </button>
+
+      <a
+        class="story-action"
+        href="${escapeHtml(
+          primaryUrl(story)
+        )}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Read more →
+      </a>
+
+      <button
+        class="story-action save-button ${
+          isSaved(story)
+            ? "saved"
+            : ""
+        }"
+        type="button"
+      >
+        ${
+          isSaved(story)
+            ? "Saved"
+            : "Save"
+        }
+      </button>
+
+    </div>
+
+    ${contextHtml}
+  `;
+
+  const coverageButton =
+    article.querySelector(
+      ".coverage-button"
+    );
+
+  coverageButton?.addEventListener(
+    "click",
+    () => openSources(story)
+  );
+
+  const saveButton =
+    article.querySelector(
+      ".save-button"
+    );
+
+  saveButton?.addEventListener(
+    "click",
+    () => toggleSaved(story)
+  );
+
+  const contextButton =
+    article.querySelector(
+      ".context-button"
+    );
+
+  const contextBox =
+    article.querySelector(
+      ".context-box"
+    );
+
+  contextButton?.addEventListener(
+    "click",
+    () => {
+      contextBox?.classList.toggle(
+        "hidden"
+      );
+
+      contextButton.textContent =
+        contextBox?.classList.contains(
+          "hidden"
+        )
+          ? "Context"
+          : "Hide context";
+    }
+  );
+
+  return article;
+}
+
+
+function renderStoryList(
+  container,
+  stories
+) {
+  container.innerHTML = "";
+
+  if (!stories.length) {
+    container.innerHTML = `
+      <div class="loading-card">
+        No significant stories in this view.
+      </div>
+    `;
+
+    return;
+  }
+
+  stories.forEach(story => {
+    container.appendChild(
+      storyCard(story)
+    );
+  });
+}
+
+
+function topBriefStories() {
+  /*
+    Prefer backend-selected Top stories,
+    but remove weak items where possible.
+  */
+
+  const candidates =
+    state.top.length
+      ? state.top
+      : state.clusters;
+
+  const strong = candidates.filter(
+    story =>
+      normalizedImportance(story) !==
+      "noteworthy"
+  );
+
+  const selected =
+    strong.length >= 4
+      ? strong
+      : candidates;
+
+  return selected.slice(0, 8);
+}
+
+
+function developingStories() {
+  return state.clusters
+    .filter(isDeveloping)
+    .sort(
+      (a, b) =>
+        new Date(storyTimestamp(b)) -
+        new Date(storyTimestamp(a))
+    )
+    .slice(0, 6);
+}
+
+
+function renderBrief() {
+  setPageHeader(
+    "The Brief",
+    "What matters today, without the noise."
+  );
+
+  els.contentView.innerHTML = "";
+
+  const briefSection =
+    document.createElement("section");
+
+  briefSection.className =
+    "content-section";
+
+  const stories =
+    topBriefStories();
+
+  briefSection.innerHTML = `
+    <div class="section-heading">
+
+      <div>
+        <div class="section-kicker">
+          ESSENTIAL
+        </div>
+
+        <h2>The Brief</h2>
+      </div>
+
+      <span class="section-count">
+        ${stories.length}
+      </span>
+
+    </div>
+
+    <div
+      id="dynamicBriefStories"
+      class="story-list"
+    ></div>
+  `;
+
+  els.contentView.appendChild(
+    briefSection
+  );
+
+  renderStoryList(
+    briefSection.querySelector(
+      "#dynamicBriefStories"
+    ),
+    stories
+  );
+
+
+  const developing =
+    developingStories();
+
+  if (developing.length) {
+    const section =
+      document.createElement("section");
+
+    section.className =
+      "content-section";
+
+    section.innerHTML = `
+      <div class="section-heading">
+
+        <div>
+          <div class="section-kicker">
+            ACTIVE STORIES
+          </div>
+
+          <h2>Developing</h2>
+        </div>
+
+        <span class="section-count">
+          ${developing.length}
+        </span>
+
+      </div>
+
+      <div class="developing-list">
+        ${developing
+          .slice(0, 4)
+          .map(story => `
+            <div
+              class="developing-card"
+              data-story-key="${escapeHtml(
+                storyKey(story)
+              )}"
+            >
+              <div class="section-kicker">
+                ${escapeHtml(
+                  story.category || ""
+                )}
+              </div>
+
+              <h3>
+                ${escapeHtml(
+                  story.title
+                )}
+              </h3>
+
+              <div class="developing-meta">
+                ${sourceCount(story)}
+                sources ·
+                ${escapeHtml(
+                  timeAgo(
+                    storyTimestamp(story)
+                  )
+                )}
+              </div>
+            </div>
+          `)
+          .join("")}
+      </div>
+    `;
+
+    els.contentView.appendChild(
+      section
+    );
+
+    section
+      .querySelectorAll(
+        ".developing-card"
+      )
+      .forEach(card => {
+        card.addEventListener(
+          "click",
+          () => {
+            const story =
+              state.clusters.find(
+                item =>
+                  storyKey(item) ===
+                  card.dataset.storyKey
+              );
+
+            if (story) {
+              openSources(story);
+            }
+          }
+        );
+      });
+  }
+
+  renderExplore();
+}
+
+
+function renderExplore() {
+  const counts = {};
+
+  state.clusters.forEach(story => {
+    const category =
+      story.category || "Other";
+
+    counts[category] =
+      (counts[category] || 0) + 1;
+  });
+
+  const preferredOrder = [
+    "India",
+    "Indian Politics",
+    "Macro Economics",
+    "Business & Micro",
+    "World",
+    "Geopolitics",
+    "World Politics",
+    "AI",
+    "Technology",
+    "Science & Climate",
+    "The Ken"
+  ];
+
+  const section =
+    document.createElement("section");
+
+  section.className =
+    "content-section";
+
+  section.innerHTML = `
+    <div class="section-heading">
+      <div>
+        <div class="section-kicker">
+          GO DEEPER
+        </div>
+
+        <h2>Explore</h2>
+      </div>
+    </div>
+
+    <div class="category-grid">
+      ${preferredOrder
+        .filter(category =>
+          counts[category]
+        )
+        .map(category => `
+          <button
+            class="category-card"
+            data-category="${escapeHtml(
+              category
+            )}"
+          >
+            <div class="category-card-name">
+              ${escapeHtml(
+                displayCategory(category)
+              )}
+            </div>
+
+            <div class="category-card-count">
+              ${counts[category]}
+              ${
+                counts[category] === 1
+                  ? "story"
+                  : "stories"
+              }
+            </div>
+          </button>
+        `)
+        .join("")}
+    </div>
+  `;
+
+  els.contentView.appendChild(section);
+
+  section
+    .querySelectorAll(
+      ".category-card"
+    )
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          showCategory(
+            button.dataset.category
+          );
+        }
+      );
+    });
+}
+
+
+function displayCategory(category) {
+  const names = {
+    "Macro Economics":
+      "Economy & Policy",
+
+    "Business & Micro":
+      "Business"
+  };
+
+  return names[category] || category;
+}
+
+
+function showCategory(category) {
+  state.currentView = "category";
+  state.currentCategory = category;
+
+  closeMenu();
+
+  setActiveNav(category);
+
+  setPageHeader(
+    displayCategory(category),
+    `Latest significant developments in ${displayCategory(
+      category
+    )}.`
+  );
+
+  const stories = state.clusters
+    .filter(
+      story =>
+        story.category === category
+    )
+    .sort(
+      (a, b) =>
+        (Number(b.importance) || 0) -
+        (Number(a.importance) || 0)
+    );
+
+  renderSingleView(
+    displayCategory(category),
+    stories,
+    `${stories.length} ${
+      stories.length === 1
+        ? "story"
+        : "stories"
+    }`
+  );
+}
+
+
+function renderSingleView(
+  title,
+  stories,
+  description = ""
+) {
+  els.contentView.innerHTML = "";
+
+  const section =
+    document.createElement("section");
+
+  section.className =
+    "content-section";
+
+  section.innerHTML = `
+    <div class="view-header">
+
+      <div class="section-kicker">
+        DAILY INTELLIGENCE
+      </div>
+
+      <h2>
+        ${escapeHtml(title)}
+      </h2>
+
+      ${
+        description
+          ? `
+            <p>
+              ${escapeHtml(description)}
+            </p>
+          `
+          : ""
+      }
+
+    </div>
+
+    <div
+      id="singleViewStories"
+      class="story-list"
+    ></div>
+  `;
+
+  els.contentView.appendChild(
+    section
+  );
+
+  renderStoryList(
+    section.querySelector(
+      "#singleViewStories"
+    ),
+    stories
+  );
+
+  showEmpty(!stories.length);
+}
+
+
+function renderSinceLastCheck() {
+  state.currentView = "since";
+  state.currentCategory = null;
+
+  closeMenu();
+
+  setActiveNav(null, "since");
+
+  setPageHeader(
+    "Since Last Check",
+    "Only developments published since your previous visit."
+  );
+
+  const stories =
+    state.previousVisit
+      ? state.clusters
+          .filter(isNewSinceVisit)
+          .sort(
+            (a, b) =>
+              new Date(
+                storyTimestamp(b)
+              ) -
+              new Date(
+                storyTimestamp(a)
+              )
+          )
+      : topBriefStories();
+
+  renderSingleView(
+    "Since Last Check",
+    stories,
+    state.previousVisit
+      ? `${stories.length} new ${
+          stories.length === 1
+            ? "development"
+            : "developments"
+        }`
+      : "This is your first recorded visit, so today's Brief is shown."
+  );
+}
+
+
+function renderDevelopingView() {
+  state.currentView = "developing";
+  state.currentCategory = null;
+
+  closeMenu();
+
+  setActiveNav(
+    null,
+    "developing"
+  );
+
+  setPageHeader(
+    "Developing",
+    "Stories receiving meaningful new coverage."
+  );
+
+  const stories =
+    developingStories();
+
+  renderSingleView(
+    "Developing",
+    stories,
+    `${stories.length} active ${
+      stories.length === 1
+        ? "story"
+        : "stories"
+    }`
+  );
+}
+
+
+function renderSaved() {
+  state.currentView = "saved";
+  state.currentCategory = null;
+
+  closeMenu();
+
+  setActiveNav(null, "saved");
+
+  setPageHeader(
+    "Saved",
+    "Stories you've kept for later."
+  );
+
+  const stories =
+    state.clusters.filter(
+      story => isSaved(story)
+    );
+
+  renderSingleView(
+    "Saved",
+    stories,
+    `${stories.length} saved ${
+      stories.length === 1
+        ? "story"
+        : "stories"
+    }`
+  );
+}
+
+
+function renderSourcesView() {
+  state.currentView = "sources";
+  state.currentCategory = null;
+
+  closeMenu();
+
+  setActiveNav(null, "sources");
+
+  setPageHeader(
+    "Sources",
+    "Health of the feeds powering your briefing."
+  );
+
+  els.contentView.innerHTML = "";
+
+  const sources =
+    state.data?.sources || [];
+
+  const section =
+    document.createElement("section");
+
+  section.className =
+    "content-section";
+
+  section.innerHTML = `
+    <div class="view-header">
+      <div class="section-kicker">
+        SOURCE HEALTH
+      </div>
+
+      <h2>Sources</h2>
+
+      <p>
+        ${sources.filter(s => s.ok).length}
+        of ${sources.length}
+        feeds healthy on the latest refresh.
+      </p>
+    </div>
+
+    <div class="story-list">
+
+      ${sources
+        .map(source => `
+          <div class="story-card">
+
+            <div class="story-topline">
+              <span
+                class="importance-label ${
+                  source.ok
+                    ? "significant"
+                    : "noteworthy"
+                }"
+              >
+                ${
+                  source.ok
+                    ? "Healthy"
+                    : "Unavailable"
+                }
+              </span>
+
+              <span class="category-label">
+                ${escapeHtml(
+                  source.category || ""
+                )}
+              </span>
+            </div>
+
+            <h3 class="story-title">
+              ${escapeHtml(
+                source.source || ""
+              )}
+            </h3>
+
+            <div class="story-meta">
+              ${Number(
+                source.item_count || 0
+              )}
+              items retrieved
+            </div>
+
+          </div>
+        `)
+        .join("")}
+
+    </div>
+  `;
+
+  els.contentView.appendChild(
+    section
+  );
+}
+
+
+async function renderArchives() {
+  state.currentView = "archives";
+  state.currentCategory = null;
+
+  closeMenu();
+
+  setActiveNav(null, "archives");
+
+  setPageHeader(
+    "Archives",
+    "Previous Daily Intelligence briefings."
+  );
+
+  els.contentView.innerHTML = `
+    <div class="loading-card">
+      Loading archives…
+    </div>
+  `;
+
+  try {
+    const response =
+      await fetch(
+        `${ARCHIVES_URL}?v=${Date.now()}`,
+        {
+          cache: "no-store"
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        "Archive index unavailable"
+      );
+    }
+
+    const archives =
+      await response.json();
+
+    els.contentView.innerHTML = "";
+
+    const section =
+      document.createElement("section");
+
+    section.className =
+      "content-section";
+
+    section.innerHTML = `
+      <div class="view-header">
+
+        <div class="section-kicker">
+          ARCHIVE
+        </div>
+
+        <h2>Daily Briefings</h2>
+
+        <p>
+          ${archives.length}
+          archived briefings available.
+        </p>
+
+      </div>
+
+      <div class="story-list">
+
+        ${archives
+          .map(item => `
+            <div class="story-card">
+
+              <div class="story-topline">
+                <span class="category-label">
+                  DAILY BRIEF
+                </span>
+              </div>
+
+              <h3 class="story-title">
+                ${escapeHtml(
+                  new Intl.DateTimeFormat(
+                    "en-IN",
+                    {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric"
+                    }
+                  ).format(
+                    new Date(
+                      `${item.date}T12:00:00`
+                    )
+                  )
+                )}
+              </h3>
+
+              <div class="story-meta">
+                ${item.count || 0}
+                essential stories
+              </div>
+
+            </div>
+          `)
+          .join("")}
+
+      </div>
+    `;
+
+    els.contentView.appendChild(
+      section
+    );
+
+  } catch (error) {
+    els.contentView.innerHTML = `
+      <div class="empty-state">
+        <h2>Archives unavailable.</h2>
+        <p>
+          Today's briefing is unaffected.
+        </p>
+      </div>
+    `;
+  }
+}
+
+
+function searchStories(query) {
+  const normalized =
+    query.trim().toLowerCase();
+
+  if (!normalized) {
+    renderBrief();
+    return;
+  }
+
+  const results =
+    state.clusters.filter(story => {
+      const haystack = [
+        story.title,
+        story.description,
+        story.category,
+        ...(story.sources || [])
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(
+        normalized
+      );
+    });
+
+  state.currentView = "search";
+
+  setPageHeader(
+    "Search",
+    `${results.length} results for “${query}”.`
+  );
+
+  renderSingleView(
+    `Results for “${query}”`,
+    results
+  );
+}
+
+
+function openSources(story) {
+  const articles =
+    story.articles || [];
+
+  els.sheetTitle.textContent =
+    story.title || "Coverage";
+
+  if (!articles.length) {
+    els.sheetSources.innerHTML = `
+      <a
+        class="sheet-source"
+        href="${escapeHtml(
+          primaryUrl(story)
+        )}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <div class="sheet-source-name">
+          Primary source
+        </div>
+
+        <div class="sheet-source-title">
+          ${escapeHtml(
+            story.title || ""
+          )}
+        </div>
+      </a>
+    `;
+  } else {
+    els.sheetSources.innerHTML =
+      articles
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(
+              b.published_at || 0
+            ) -
+            new Date(
+              a.published_at || 0
+            )
+        )
+        .map(article => `
+          <a
+            class="sheet-source"
+            href="${escapeHtml(
+              article.url || "#"
+            )}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+
+            <div class="sheet-source-name">
+              ${escapeHtml(
+                article.source ||
+                "Source"
+              )}
+            </div>
+
+            <div class="sheet-source-title">
+              ${escapeHtml(
+                article.title ||
+                story.title ||
+                ""
+              )}
+            </div>
+
+            <div class="sheet-source-time">
+              ${escapeHtml(
+                timeAgo(
+                  article.published_at
+                )
+              )}
+            </div>
+
+          </a>
+        `)
+        .join("");
+  }
+
+  els.sourceSheet.classList.remove(
+    "hidden"
+  );
+
+  els.sourceSheet.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+
+  document.body.style.overflow =
+    "hidden";
+}
+
+
+function closeSources() {
+  els.sourceSheet.classList.add(
+    "hidden"
+  );
+
+  els.sourceSheet.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  document.body.style.overflow = "";
+}
+
+
+function setPageHeader(
+  title,
+  description
+) {
+  els.pageTitle.textContent = title;
+
+  els.pageDescription.textContent =
+    description;
+}
+
+
+function setActiveNav(
+  category = null,
+  view = null
+) {
+  document
+    .querySelectorAll(".nav-item")
+    .forEach(button => {
+      button.classList.remove(
+        "active"
+      );
+
+      if (
+        category &&
+        button.dataset.category ===
+          category
+      ) {
+        button.classList.add(
+          "active"
+        );
+      }
+
+      if (
+        view &&
+        button.dataset.view === view
+      ) {
+        button.classList.add(
+          "active"
+        );
+      }
+    });
+}
+
+
+function showEmpty(show) {
+  els.emptyState.classList.toggle(
+    "hidden",
+    !show
+  );
+}
+
+
+function openMenu() {
+  document.body.classList.add(
+    "menu-open"
+  );
+
+  els.openMenu?.setAttribute(
+    "aria-expanded",
+    "true"
+  );
+}
+
+
+function closeMenu() {
+  document.body.classList.remove(
+    "menu-open"
+  );
+
+  els.openMenu?.setAttribute(
+    "aria-expanded",
+    "false"
+  );
+}
+
+
+function renderCurrentView() {
+  if (
+    state.currentView ===
+      "category" &&
+    state.currentCategory
+  ) {
+    showCategory(
+      state.currentCategory
+    );
+
+    return;
+  }
+
+  if (state.currentView === "since") {
+    renderSinceLastCheck();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "developing"
+  ) {
+    renderDevelopingView();
+    return;
+  }
+
+  if (state.currentView === "saved") {
+    renderSaved();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "sources"
+  ) {
+    renderSourcesView();
+    return;
+  }
+
+  if (
+    state.currentView ===
+    "archives"
+  ) {
+    renderArchives();
+    return;
+  }
+
+  renderBrief();
+}
+
+
+function updateSincePanel() {
+  if (!state.previousVisit) {
+    els.sinceSummary.textContent =
+      "First visit recorded. From your next visit, we'll show only what changed.";
+
+    return;
+  }
+
+  const newStories =
+    state.clusters.filter(
+      isNewSinceVisit
+    );
+
+  const significant =
+    newStories.filter(
+      story =>
+        normalizedImportance(story) !==
+        "noteworthy"
+    );
+
+  const developing =
+    newStories.filter(
+      isDeveloping
+    );
+
+  if (!newStories.length) {
+    els.sinceSummary.textContent =
+      "No new developments since your last check.";
+
+    return;
+  }
+
+  els.sinceSummary.textContent =
+    `${significant.length} significant ${
+      significant.length === 1
+        ? "development"
+        : "developments"
+    } · ${developing.length} developing ${
+      developing.length === 1
+        ? "story"
+        : "stories"
+    } updated`;
+}
+
+
+function updateHealth() {
+  const sources =
+    state.data?.sources || [];
+
+  const healthy =
+    sources.filter(
+      source => source.ok
+    ).length;
+
+  const total =
+    sources.length;
+
+  const ratio =
+    total
+      ? healthy / total
+      : 0;
+
+  const healthClass =
+    ratio >= 0.8
+      ? "healthy"
+      : ratio >= 0.5
+        ? "partial"
+        : "unhealthy";
+
+  [
+    els.healthDot,
+    els.sidebarHealthDot
+  ].forEach(dot => {
+    if (!dot) return;
+
+    dot.classList.remove(
+      "healthy",
+      "partial",
+      "unhealthy"
+    );
+
+    dot.classList.add(
+      healthClass
+    );
+  });
+
+  els.sidebarStatus.textContent =
+    `${healthy}/${total} sources healthy`;
+}
+
+
+function updateTimestamp() {
+  const generated =
+    state.data?.generated_at;
+
+  els.lastUpdated.textContent =
+    generated
+      ? `Updated ${timeAgo(generated)}`
+      : "Updated recently";
+}
+
+
+function applyTheme() {
+  const stored =
+    localStorage.getItem(
+      "di_theme"
+    );
+
+  const prefersDark =
+    window.matchMedia &&
+    window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+
+  const theme =
+    stored ||
+    (prefersDark ? "dark" : "light");
+
+  document.documentElement.setAttribute(
+    "data-theme",
+    theme
+  );
+}
+
+
+function toggleTheme() {
+  const current =
+    document.documentElement.getAttribute(
+      "data-theme"
+    );
+
+  const next =
+    current === "dark"
+      ? "light"
+      : "dark";
+
+  document.documentElement.setAttribute(
+    "data-theme",
+    next
+  );
+
+  localStorage.setItem(
+    "di_theme",
+    next
+  );
+}
+
+
+function wireEvents() {
+  els.openMenu?.addEventListener(
+    "click",
+    openMenu
+  );
+
+  els.closeMenu?.addEventListener(
+    "click",
+    closeMenu
+  );
+
+  els.menuOverlay?.addEventListener(
+    "click",
+    closeMenu
+  );
+
+
+  els.themeButton?.addEventListener(
+    "click",
+    toggleTheme
+  );
+
+
+  els.searchButton?.addEventListener(
+    "click",
+    () => {
+      els.searchPanel.classList.toggle(
+        "hidden"
+      );
+
+      if (
+        !els.searchPanel.classList.contains(
+          "hidden"
+        )
+      ) {
+        setTimeout(
+          () =>
+            els.searchInput?.focus(),
+          50
+        );
+      }
+    }
+  );
+
+
+  els.closeSearch?.addEventListener(
+    "click",
+    () => {
+      els.searchPanel.classList.add(
+        "hidden"
+      );
+
+      els.searchInput.value = "";
+
+      state.searchQuery = "";
+
+      renderBrief();
+    }
+  );
+
+
+  els.searchInput?.addEventListener(
+    "input",
+    event => {
+      state.searchQuery =
+        event.target.value;
+
+      searchStories(
+        state.searchQuery
+      );
+    }
+  );
+
+
+  els.viewSinceButton?.addEventListener(
+    "click",
+    renderSinceLastCheck
+  );
+
+
+  document
+    .querySelectorAll(".nav-item")
+    .forEach(button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          const category =
+            button.dataset.category;
+
+          const view =
+            button.dataset.view;
+
+          if (category) {
+            showCategory(category);
+            return;
+          }
+
+          if (view === "brief") {
+            state.currentView =
+              "brief";
+
+            state.currentCategory =
+              null;
+
+            setActiveNav(
+              null,
+              "brief"
+            );
+
+            closeMenu();
+            renderBrief();
+          }
+
+          if (view === "since") {
+            renderSinceLastCheck();
+          }
+
+          if (
+            view === "developing"
+          ) {
+            renderDevelopingView();
+          }
+
+          if (view === "saved") {
+            renderSaved();
+          }
+
+          if (
+            view === "archives"
+          ) {
+            renderArchives();
+          }
+
+          if (view === "sources") {
+            renderSourcesView();
+          }
+        }
+      );
+    });
+
+
+  els.sheetBackdrop?.addEventListener(
+    "click",
+    closeSources
+  );
+
+  els.closeSheet?.addEventListener(
+    "click",
+    closeSources
+  );
+
+
+  document.addEventListener(
+    "keydown",
+    event => {
+      if (event.key === "Escape") {
+        closeMenu();
+        closeSources();
+
+        els.searchPanel?.classList.add(
+          "hidden"
+        );
+      }
+    }
+  );
+}
+
+
+async function loadData() {
+  try {
+    const response =
+      await fetch(
+        `${DATA_URL}?v=${Date.now()}`,
+        {
+          cache: "no-store"
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        `News data returned ${response.status}`
+      );
+    }
+
+    const data =
+      await response.json();
+
+    state.data = data;
+
+    state.clusters =
+      Array.isArray(data.clusters)
+        ? data.clusters
+        : [];
+
+    state.top =
+      Array.isArray(data.top)
+        ? data.top
+        : [];
+
+    els.todayDate.textContent =
+      longToday().toUpperCase();
+
+    updateTimestamp();
+    updateHealth();
+    updateSincePanel();
+
+    renderBrief();
+
+    /*
+      Record the visit only AFTER we've compared
+      the current data with the previous visit.
+    */
+    localStorage.setItem(
+      "di_last_visit",
+      state.currentVisit
+    );
+
+  } catch (error) {
+    console.error(
+      "Daily Intelligence failed to load:",
+      error
+    );
+
+    els.contentView.innerHTML = `
+      <div class="empty-state">
+
+        <h2>
+          The briefing couldn't load.
+        </h2>
+
+        <p>
+          The latest data may still be updating.
+          Refresh the page in a moment.
+        </p>
+
+      </div>
+    `;
+
+    els.lastUpdated.textContent =
+      "Data unavailable";
+
+    els.sidebarStatus.textContent =
+      "Unable to load briefing";
+  }
+}
+
+
+applyTheme();
+wireEvents();
+loadData();
