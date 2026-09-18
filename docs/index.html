@@ -1,42 +1,489 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="color-scheme" content="light dark" />
-<title>Daily Intelligence</title>
-<link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-<div class="app">
-  <header>
-    <div class="brand">
-      <h1>Daily Intelligence</h1>
-      <p>Know what changed. Understand why it matters. Skip the noise.</p>
-    </div>
-    <div class="header-actions">
-      <span class="status"><i></i><span id="statusText">Loading…</span></span>
-      <button id="themeBtn" class="icon-btn" title="Toggle theme">◐</button>
-      <button id="refreshBtn" class="btn">Check latest</button>
-    </div>
-  </header>
+  <meta charset="UTF-8">
 
-  <div class="shell">
-    <aside id="nav"></aside>
-    <main>
-      <section class="page-head">
-        <div><h2 id="pageTitle">Top 8</h2><p id="pageSubtitle">The smallest useful briefing across the biggest domains.</p></div>
-        <input id="searchInput" placeholder="Search recent intelligence…" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Daily Intelligence — a signal-first personal news briefing."
+  >
+
+  <meta name="theme-color" content="#f7f6f2">
+
+  <title>Daily Intelligence</title>
+
+  <link rel="stylesheet" href="./styles.css">
+</head>
+
+<body>
+
+  <!-- MOBILE OVERLAY -->
+  <div
+    id="menuOverlay"
+    class="menu-overlay"
+    aria-hidden="true"
+  ></div>
+
+
+  <!-- LEFT NAVIGATION -->
+  <aside
+    id="sidebar"
+    class="sidebar"
+    aria-label="Main navigation"
+  >
+
+    <div class="sidebar-top">
+
+      <div class="sidebar-brand">
+        <span class="brand-mark">DI</span>
+
+        <div>
+          <div class="brand-name">Daily Intelligence</div>
+          <div class="brand-subtitle">Signal over noise</div>
+        </div>
+      </div>
+
+      <button
+        id="closeMenu"
+        class="icon-button close-menu"
+        aria-label="Close menu"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+    <nav class="navigation">
+
+      <div class="nav-group">
+        <div class="nav-label">Today</div>
+
+        <button class="nav-item active" data-view="brief">
+          The Brief
+        </button>
+
+        <button class="nav-item" data-view="since">
+          Since Last Check
+        </button>
+
+        <button class="nav-item" data-view="developing">
+          Developing
+        </button>
+      </div>
+
+
+      <div class="nav-group">
+        <div class="nav-label">India</div>
+
+        <button class="nav-item" data-category="India">
+          India
+        </button>
+
+        <button class="nav-item" data-category="Indian Politics">
+          Indian Politics
+        </button>
+
+        <button class="nav-item" data-category="Macro Economics">
+          Economy &amp; Policy
+        </button>
+
+        <button class="nav-item" data-category="Business & Micro">
+          Business
+        </button>
+      </div>
+
+
+      <div class="nav-group">
+        <div class="nav-label">World</div>
+
+        <button class="nav-item" data-category="World">
+          World
+        </button>
+
+        <button class="nav-item" data-category="Geopolitics">
+          Geopolitics
+        </button>
+
+        <button class="nav-item" data-category="World Politics">
+          World Politics
+        </button>
+      </div>
+
+
+      <div class="nav-group">
+        <div class="nav-label">Tech &amp; Science</div>
+
+        <button class="nav-item" data-category="AI">
+          AI
+        </button>
+
+        <button class="nav-item" data-category="Technology">
+          Technology
+        </button>
+
+        <button class="nav-item" data-category="Science & Climate">
+          Science &amp; Climate
+        </button>
+      </div>
+
+
+      <div class="nav-group">
+        <div class="nav-label">More</div>
+
+        <button class="nav-item" data-category="The Ken">
+          The Ken
+        </button>
+
+        <button class="nav-item" data-view="saved">
+          Saved
+        </button>
+
+        <button class="nav-item" data-view="archives">
+          Archives
+        </button>
+
+        <button class="nav-item" data-view="sources">
+          Sources
+        </button>
+      </div>
+
+    </nav>
+
+
+    <div class="sidebar-footer">
+      <div class="sidebar-status">
+        <span id="sidebarHealthDot" class="status-dot"></span>
+        <span id="sidebarStatus">Loading sources…</span>
+      </div>
+    </div>
+
+  </aside>
+
+
+  <!-- PAGE -->
+  <div class="page-shell">
+
+    <!-- HEADER -->
+    <header class="topbar">
+
+      <div class="topbar-left">
+
+        <button
+          id="openMenu"
+          class="icon-button menu-button"
+          aria-label="Open menu"
+          aria-expanded="false"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <div class="mobile-brand">
+          Daily Intelligence
+        </div>
+
+      </div>
+
+
+      <div class="topbar-actions">
+
+        <button
+          id="searchButton"
+          class="icon-button"
+          aria-label="Search"
+          title="Search"
+        >
+          ⌕
+        </button>
+
+        <button
+          id="themeButton"
+          class="icon-button"
+          aria-label="Toggle dark mode"
+          title="Dark mode"
+        >
+          ◐
+        </button>
+
+      </div>
+
+    </header>
+
+
+    <!-- SEARCH -->
+    <div id="searchPanel" class="search-panel hidden">
+      <div class="search-inner">
+
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Search today's intelligence…"
+          autocomplete="off"
+        >
+
+        <button id="closeSearch" class="text-button">
+          Close
+        </button>
+
+      </div>
+    </div>
+
+
+    <!-- MAIN -->
+    <main class="main-content">
+
+      <!-- DATE / STATUS -->
+      <section class="brief-header">
+
+        <div>
+          <div id="todayDate" class="eyebrow">
+            TODAY
+          </div>
+
+          <h1 id="pageTitle">
+            The Brief
+          </h1>
+
+          <p id="pageDescription" class="page-description">
+            What matters today, without the noise.
+          </p>
+        </div>
+
+
+        <div class="update-status">
+          <span id="healthDot" class="status-dot"></span>
+
+          <span id="lastUpdated">
+            Updating…
+          </span>
+        </div>
+
       </section>
-      <div id="pulse" class="pulse"></div>
-      <div id="content"><div class="loading">Loading briefing…</div></div>
+
+
+      <!-- SINCE LAST CHECK -->
+      <section
+        id="sinceLastPanel"
+        class="since-panel"
+      >
+
+        <div class="since-copy">
+
+          <div class="section-kicker">
+            SINCE YOU LAST CHECKED
+          </div>
+
+          <div id="sinceSummary" class="since-summary">
+            Loading your briefing…
+          </div>
+
+        </div>
+
+        <button
+          id="viewSinceButton"
+          class="quiet-button"
+        >
+          View changes
+        </button>
+
+      </section>
+
+
+      <!-- MAIN VIEW -->
+      <section id="contentView">
+
+        <!-- THE BRIEF -->
+        <section
+          id="briefSection"
+          class="content-section"
+        >
+
+          <div class="section-heading">
+
+            <div>
+              <div class="section-kicker">
+                ESSENTIAL
+              </div>
+
+              <h2>The Brief</h2>
+            </div>
+
+            <span
+              id="briefCount"
+              class="section-count"
+            ></span>
+
+          </div>
+
+
+          <div
+            id="briefStories"
+            class="story-list"
+          >
+            <div class="loading-card">
+              Building your briefing…
+            </div>
+          </div>
+
+        </section>
+
+
+        <!-- DEVELOPING -->
+        <section
+          id="developingSection"
+          class="content-section"
+        >
+
+          <div class="section-heading">
+
+            <div>
+              <div class="section-kicker">
+                ACTIVE STORIES
+              </div>
+
+              <h2>Developing</h2>
+            </div>
+
+            <span
+              id="developingCount"
+              class="section-count"
+            ></span>
+
+          </div>
+
+
+          <div
+            id="developingStories"
+            class="developing-list"
+          ></div>
+
+        </section>
+
+
+        <!-- EXPLORE -->
+        <section
+          id="exploreSection"
+          class="content-section"
+        >
+
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">
+                GO DEEPER
+              </div>
+
+              <h2>Explore</h2>
+            </div>
+          </div>
+
+
+          <div
+            id="categoryGrid"
+            class="category-grid"
+          ></div>
+
+        </section>
+
+      </section>
+
+
+      <!-- EMPTY STATE -->
+      <section
+        id="emptyState"
+        class="empty-state hidden"
+      >
+
+        <h2>Nothing here yet.</h2>
+
+        <p>
+          No stories currently match this view.
+        </p>
+
+      </section>
+
     </main>
+
+
+    <!-- FOOTER -->
+    <footer class="footer">
+
+      <div>
+        Daily Intelligence
+      </div>
+
+      <div>
+        Built for signal, not scroll.
+      </div>
+
+    </footer>
+
   </div>
 
-  <footer>
-    Static GitHub Pages edition. News is refreshed by GitHub Actions, clustered into stories, and linked back to the original publishers. Bookmarks and read state live only in this browser. Open original sources for full reporting and nuance.
-  </footer>
-</div>
-<script src="./app.js"></script>
+
+  <!-- STORY SOURCE SHEET -->
+  <div
+    id="sourceSheet"
+    class="sheet hidden"
+    aria-hidden="true"
+  >
+
+    <div
+      id="sheetBackdrop"
+      class="sheet-backdrop"
+    ></div>
+
+    <div class="sheet-panel">
+
+      <div class="sheet-handle"></div>
+
+      <div class="sheet-header">
+
+        <div>
+          <div class="section-kicker">
+            COVERAGE
+          </div>
+
+          <h3 id="sheetTitle">
+            Sources
+          </h3>
+        </div>
+
+        <button
+          id="closeSheet"
+          class="icon-button"
+          aria-label="Close sources"
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <div
+        id="sheetSources"
+        class="sheet-sources"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <noscript>
+    <div class="noscript">
+      Daily Intelligence requires JavaScript to load the briefing.
+    </div>
+  </noscript>
+
+
+  <script src="./app.js"></script>
+
 </body>
 </html>
