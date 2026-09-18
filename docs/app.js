@@ -1,999 +1,506 @@
-/* ============================================================
-   DAILY INTELLIGENCE
-   V6 APPLICATION
-   Signal over noise.
-   ============================================================ */
+const DATA_URL="./data/latest.json",ARCHIVES_URL="./data/archives.json";
 
-const DATA_URL = "./data/latest.json";
-const ARCHIVES_URL = "./data/archives.json";
-
-
-/* ============================================================
-   STATE
-   ============================================================ */
-
-const state = {
-  data: null,
-  clusters: [],
-  top: [],
-  markets: {},
-
-  currentView: "brief",
-  currentCategory: null,
-
-  saved: new Set(
-    JSON.parse(localStorage.getItem("di_saved") || "[]")
-  ),
-
-  previousVisit: localStorage.getItem("di_last_visit"),
-  currentVisit: new Date().toISOString()
+const state={
+  data:null,
+  clusters:[],
+  top:[],
+  markets:{},
+  currentView:"brief",
+  currentCategory:null,
+  saved:new Set(JSON.parse(localStorage.getItem("di_saved")||"[]")),
+  previousVisit:localStorage.getItem("di_last_visit"),
+  currentVisit:new Date().toISOString()
 };
 
+const $=id=>document.getElementById(id);
 
-const $ = id => document.getElementById(id);
-
-
-const els = {
-  menuOverlay: $("menuOverlay"),
-  openMenu: $("openMenu"),
-  closeMenu: $("closeMenu"),
-
-  searchButton: $("searchButton"),
-  desktopSearchTrigger: $("desktopSearchTrigger"),
-  searchPanel: $("searchPanel"),
-  searchInput: $("searchInput"),
-  closeSearch: $("closeSearch"),
-
-  themeButton: $("themeButton"),
-  sidebarThemeButton: $("sidebarThemeButton"),
-
-  todayDate: $("todayDate"),
-  topbarDate: $("topbarDate"),
-  topbarUpdated: $("topbarUpdated"),
-
-  pageTitle: $("pageTitle"),
-  pageDescription: $("pageDescription"),
-  lastUpdated: $("lastUpdated"),
-
-  sidebarHealthDot: $("sidebarHealthDot"),
-  healthDot: $("healthDot"),
-  sidebarStatus: $("sidebarStatus"),
-
-  sinceLastPanel: $("sinceLastPanel"),
-  sinceSummary: $("sinceSummary"),
-  viewSinceButton: $("viewSinceButton"),
-
-  contentView: $("contentView"),
-
-  contextRail: $("contextRail"),
-  glancePanel: $("glancePanel"),
-  glanceGrid: $("glanceGrid"),
-  changedPanel: $("changedPanel"),
-  changedSummary: $("changedSummary"),
-  contextSinceButton: $("contextSinceButton"),
-  topicPanel: $("topicPanel"),
-  topicChips: $("topicChips"),
-
-  sourceSheet: $("sourceSheet"),
-  sheetBackdrop: $("sheetBackdrop"),
-  closeSheet: $("closeSheet"),
-  sheetTitle: $("sheetTitle"),
-  sheetSources: $("sheetSources"),
-
-  mobileBottomNav: $("mobileBottomNav")
+const els={
+  menuOverlay:$("menuOverlay"),
+  openMenu:$("openMenu"),
+  closeMenu:$("closeMenu"),
+  searchButton:$("searchButton"),
+  desktopSearchTrigger:$("desktopSearchTrigger"),
+  searchPanel:$("searchPanel"),
+  searchInput:$("searchInput"),
+  closeSearch:$("closeSearch"),
+  themeButton:$("themeButton"),
+  sidebarThemeButton:$("sidebarThemeButton"),
+  todayDate:$("todayDate"),
+  topbarDate:$("topbarDate"),
+  topbarUpdated:$("topbarUpdated"),
+  pageTitle:$("pageTitle"),
+  pageDescription:$("pageDescription"),
+  lastUpdated:$("lastUpdated"),
+  sidebarHealthDot:$("sidebarHealthDot"),
+  healthDot:$("healthDot"),
+  sidebarStatus:$("sidebarStatus"),
+  sinceLastPanel:$("sinceLastPanel"),
+  sinceSummary:$("sinceSummary"),
+  viewSinceButton:$("viewSinceButton"),
+  contentView:$("contentView"),
+  contextRail:$("contextRail"),
+  glanceGrid:$("glanceGrid"),
+  changedSummary:$("changedSummary"),
+  contextSinceButton:$("contextSinceButton"),
+  topicChips:$("topicChips"),
+  sourceSheet:$("sourceSheet"),
+  sheetBackdrop:$("sheetBackdrop"),
+  closeSheet:$("closeSheet"),
+  sheetTitle:$("sheetTitle"),
+  sheetSources:$("sheetSources")
 };
 
-
-/* ============================================================
-   BASIC HELPERS
-   ============================================================ */
-
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function esc(v=""){
+  return String(v)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
-
-function cleanText(value = "") {
-  const div = document.createElement("div");
-
-  div.innerHTML = value;
-
-  return (div.textContent || div.innerText || "")
-    .replace(/\s+/g, " ")
+function clean(v=""){
+  const d=document.createElement("div");
+  d.innerHTML=v;
+  return(d.textContent||d.innerText||"")
+    .replace(/\s+/g," ")
     .trim();
 }
 
-
-function truncateWords(text, limit = 90) {
-  const words = cleanText(text)
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length <= limit) {
-    return words.join(" ");
-  }
-
-  return words
-    .slice(0, limit)
-    .join(" ") + "…";
+function trunc(v,n=55){
+  const w=clean(v).split(/\s+/).filter(Boolean);
+  return w.length<=n?w.join(" "):w.slice(0,n).join(" ")+"…";
 }
 
-
-function parseDate(value) {
-  if (!value) return null;
-
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime())
-    ? null
-    : date;
+function date(v){
+  if(!v)return null;
+  const d=new Date(v);
+  return Number.isNaN(d.getTime())?null:d;
 }
 
+function ago(v){
+  const d=date(v);
+  if(!d)return"";
 
-function timeAgo(value) {
-  const date = parseDate(value);
+  const s=Math.max(0,(Date.now()-d)/1000);
 
-  if (!date) return "";
+  if(s<60)return"just now";
 
-  const seconds = Math.max(
-    0,
-    (Date.now() - date.getTime()) / 1000
-  );
+  const m=Math.floor(s/60);
+  if(m<60)return`${m}m ago`;
 
-  if (seconds < 60) {
-    return "just now";
-  }
+  const h=Math.floor(m/60);
+  if(h<24)return`${h}h ago`;
 
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-
-  return days === 1
-    ? "yesterday"
-    : `${days}d ago`;
+  const x=Math.floor(h/24);
+  return x===1?"yesterday":`${x}d ago`;
 }
 
-
-function formatToday() {
-  return new Intl.DateTimeFormat(
-    "en-IN",
-    {
-      weekday: "long",
-      day: "numeric",
-      month: "long"
-    }
-  )
-    .format(new Date())
-    .toUpperCase();
+function stamp(s){
+  return s.published_at||
+    s.primary?.published_at||
+    s.articles?.[0]?.published_at||
+    "";
 }
 
-
-function formatCompactDate() {
-  return new Intl.DateTimeFormat(
-    "en-IN",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric"
-    }
-  ).format(new Date());
+function key(s){
+  return s.cluster_key||s.url||s.title;
 }
 
-
-function storyTimestamp(story) {
-  return (
-    story.published_at ||
-    story.primary?.published_at ||
-    story.articles?.[0]?.published_at ||
-    ""
-  );
+function url(s){
+  return s.primary?.url||
+    s.articles?.[0]?.url||
+    s.url||
+    "#";
 }
 
-
-function storyKey(story) {
-  return (
-    story.cluster_key ||
-    story.url ||
-    story.title
-  );
+function publisher(s){
+  return s.primary?.source||
+    s.sources?.[0]||
+    "Source";
 }
 
-
-function primaryUrl(story) {
-  return (
-    story.primary?.url ||
-    story.articles?.[0]?.url ||
-    story.url ||
-    "#"
-  );
+function sourceCount(s){
+  return Number(s.source_count)||
+    (Array.isArray(s.sources)?s.sources.length:0)||
+    (Array.isArray(s.articles)?s.articles.length:0)||
+    1;
 }
 
-
-function primaryPublisher(story) {
-  return (
-    story.primary?.source ||
-    story.sources?.[0] ||
-    "Source"
-  );
-}
-
-
-function sourceCount(story) {
-  if (story.source_count) {
-    return Number(story.source_count);
-  }
-
-  if (Array.isArray(story.sources)) {
-    return story.sources.length;
-  }
-
-  if (Array.isArray(story.articles)) {
-    return Math.max(1, story.articles.length);
-  }
-
-  return 1;
-}
-
-
-function usefulSummary(story, limit = 70) {
-  return truncateWords(
-    story.brief ||
-    story.description ||
-    story.primary?.description ||
+function summary(s,n=55){
+  return trunc(
+    s.brief||
+    s.description||
+    s.primary?.description||
     "",
-    limit
+    n
   );
 }
 
-
-function displayCategory(category) {
-  const aliases = {
-    "Macro Economics": "Economy & Policy",
-    "Business & Micro": "Business",
-    "Indian Markets": "Markets",
-    "Companies & Earnings": "Companies",
-    "Global → India": "Global → India"
-  };
-
-  return aliases[category] || category;
+function cat(c){
+  return({
+    "Macro Economics":"Economy & Policy",
+    "Business & Micro":"Business",
+    "Companies & Earnings":"Companies"
+  }[c]||c);
 }
 
+function norm(v=""){
+  return String(v)
+    .toLowerCase()
+    .replace(/&/g,"and")
+    .replace(/[^a-z0-9]+/g," ")
+    .trim();
+}
 
-function dedupeStories(stories = []) {
-  const seen = new Set();
+const CATEGORY_ALIASES={
+  "Indian Politics":[
+    "indian politics",
+    "india politics",
+    "politics india",
+    "national politics",
+    "politics"
+  ],
+  "Macro Economics":[
+    "macro economics",
+    "economy policy",
+    "economy and policy",
+    "indian economy",
+    "economy"
+  ],
+  "Business & Micro":[
+    "business micro",
+    "business and micro",
+    "business",
+    "companies earnings",
+    "corporate india"
+  ],
+  "Indian Markets":[
+    "indian markets",
+    "markets india",
+    "markets"
+  ],
+  "World Politics":[
+    "world politics",
+    "global politics",
+    "international politics"
+  ],
+  "Science & Climate":[
+    "science climate",
+    "science and climate",
+    "climate science"
+  ]
+};
 
-  return stories.filter(story => {
-    const key = storyKey(story);
+function matchesCategory(s,wanted){
+  const actual=norm(s.category||"");
+  const targets=(CATEGORY_ALIASES[wanted]||[wanted]).map(norm);
 
-    if (!key || seen.has(key)) {
-      return false;
-    }
+  if(targets.includes(actual))return true;
 
-    seen.add(key);
+  if(wanted==="Indian Politics"){
+    const text=norm(`${s.title||""} ${s.description||""}`);
 
+    return(
+      (actual==="india"||actual==="politics")&&
+      /\b(parliament|lok sabha|rajya sabha|bjp|congress|election|minister|government|opposition|cabinet|political)\b/.test(text)
+    );
+  }
+
+  return false;
+}
+
+function dedupe(a=[]){
+  const seen=new Set();
+
+  return a.filter(s=>{
+    const k=key(s);
+
+    if(!k||seen.has(k))return false;
+
+    seen.add(k);
     return true;
   });
 }
 
-
-function sortByImportance(stories = []) {
-  return [...stories].sort((a, b) => {
-    const importanceDifference =
-      Number(b.importance || 0) -
-      Number(a.importance || 0);
-
-    if (importanceDifference !== 0) {
-      return importanceDifference;
-    }
-
-    return (
-      (parseDate(storyTimestamp(b))?.getTime() || 0) -
-      (parseDate(storyTimestamp(a))?.getTime() || 0)
-    );
-  });
-}
-
-
-/* ============================================================
-   IMPORTANCE
-   ============================================================ */
-
-function importanceLevel(story) {
-  const supplied =
-    String(story.importance_label || "")
-      .toLowerCase();
-
-  if (
-    ["critical", "significant", "noteworthy"]
-      .includes(supplied)
-  ) {
-    return supplied;
-  }
-
-  const score = Number(story.importance || 0);
-
-  if (score >= 60) {
-    return "critical";
-  }
-
-  if (score >= 43) {
-    return "significant";
-  }
-
-  return "noteworthy";
-}
-
-
-function importanceScore(story) {
-  const score = Number(story.importance || 0);
-
-  if (score) {
-    return score;
-  }
-
-  const level = importanceLevel(story);
-
-  if (level === "critical") return 60;
-  if (level === "significant") return 45;
-
-  return 25;
-}
-
-
-function isNewSinceVisit(story) {
-  if (!state.previousVisit) {
-    return false;
-  }
-
-  const storyDate = parseDate(
-    storyTimestamp(story)
-  );
-
-  const previous = parseDate(
-    state.previousVisit
-  );
-
-  return Boolean(
-    storyDate &&
-    previous &&
-    storyDate > previous
+function sort(a=[]){
+  return[...a].sort((x,y)=>
+    (Number(y.importance||0)-Number(x.importance||0))||
+    (
+      (date(stamp(y))?.getTime()||0)-
+      (date(stamp(x))?.getTime()||0)
+    )
   );
 }
 
+function level(s){
+  const l=String(s.importance_label||"").toLowerCase();
 
-/* ============================================================
-   SAVED STORIES
-   ============================================================ */
+  if(["critical","significant","noteworthy"].includes(l)){
+    return l;
+  }
 
-function isSaved(story) {
-  return state.saved.has(
-    storyKey(story)
-  );
+  const n=Number(s.importance||0);
+
+  return n>=60
+    ?"critical"
+    :n>=43
+      ?"significant"
+      :"noteworthy";
 }
 
+function fresh(s){
+  const a=date(stamp(s));
+  const b=date(state.previousVisit);
 
-function toggleSaved(story) {
-  const key = storyKey(story);
+  return!!(a&&b&&a>b);
+}
 
-  if (state.saved.has(key)) {
-    state.saved.delete(key);
-  } else {
-    state.saved.add(key);
-  }
+function saved(s){
+  return state.saved.has(key(s));
+}
+
+function toggleSaved(s){
+  const k=key(s);
+
+  state.saved.has(k)
+    ?state.saved.delete(k)
+    :state.saved.add(k);
 
   localStorage.setItem(
     "di_saved",
     JSON.stringify([...state.saved])
   );
 
-  renderCurrentView();
+  renderCurrent();
 }
 
-
-/* ============================================================
-   PAGE CHROME
-   ============================================================ */
-
-function setPageHeader(title, description) {
-  if (els.pageTitle) {
-    els.pageTitle.textContent = title;
-  }
-
-  if (els.pageDescription) {
-    els.pageDescription.textContent = description;
-  }
+function setHeader(t,d){
+  els.pageTitle.textContent=t;
+  els.pageDescription.textContent=d;
 }
 
+function showSince(v=true){
+  els.sinceLastPanel?.classList.toggle("hidden",!v);
+}
 
-function setActiveNavigation({
-  view = null,
-  category = null
-} = {}) {
+function setActive({view=null,category=null}={}){
   document
-    .querySelectorAll(
-      ".nav-item, .mobile-nav-item"
-    )
-    .forEach(button => {
-      button.classList.remove("active");
-    });
+    .querySelectorAll(".nav-item,.mobile-nav-item")
+    .forEach(b=>{
+      b.classList.remove("active");
 
-
-  document
-    .querySelectorAll(".nav-item")
-    .forEach(button => {
-      if (
-        view &&
-        button.dataset.view === view
-      ) {
-        button.classList.add("active");
+      if(view&&b.dataset.view===view){
+        b.classList.add("active");
       }
 
-      if (
-        category &&
-        button.dataset.category === category
-      ) {
-        button.classList.add("active");
-      }
-
-      if (
-        view === "markets" &&
-        (
-          button.dataset.view === "markets" ||
-          button.dataset.category === "Indian Markets"
-        )
-      ) {
-        button.classList.add("active");
-      }
-    });
-
-
-  document
-    .querySelectorAll(".mobile-nav-item")
-    .forEach(button => {
-      if (
-        button.dataset.view === view
-      ) {
-        button.classList.add("active");
+      if(category&&b.dataset.category===category){
+        b.classList.add("active");
       }
     });
 }
 
-
-function showSincePanel(show = true) {
-  if (!els.sinceLastPanel) return;
-
-  els.sinceLastPanel.classList.toggle(
-    "hidden",
-    !show
-  );
-}
-
-
-function hideContextRail() {
-  els.contextRail?.classList.add("hidden");
-
-  els.glancePanel?.classList.add("hidden");
-  els.changedPanel?.classList.add("hidden");
-  els.topicPanel?.classList.add("hidden");
-}
-
-
-/* ============================================================
-   STORY CARD
-   ============================================================ */
-
-function marketImpactHtml(story) {
-  if (!story.market_impact) {
-    return "";
-  }
-
-  return `
-    <div class="context-box">
-
-      <div class="context-title">
-        INDIA CONNECTION
-      </div>
-
-      <div class="context-headline">
-        ${escapeHtml(story.market_impact)}
-      </div>
-
+function meta(s){
+  return`
+    <div class="story-meta">
+      <span>${esc(publisher(s))}</span>
+      <span>·</span>
+      <span>
+        ${sourceCount(s)}
+        ${sourceCount(s)===1?"source":"sources"}
+      </span>
+      <span>·</span>
+      <span>${esc(ago(stamp(s)))}</span>
     </div>
   `;
 }
 
+function why(s){
+  const v=
+    s.why_it_matters||
+    s.market_impact||
+    s.context||
+    "";
 
-function storyCard(
-  story,
-  {
-    compact = false,
-    showSummary = true
-  } = {}
-) {
-  const level = importanceLevel(story);
+  return v
+    ?`
+      <div class="why-matters">
+        <strong>Why it matters:</strong>
+        ${esc(trunc(v,38))}
+      </div>
+    `
+    :"";
+}
 
-  const publisher =
-    primaryPublisher(story);
-
-  const count =
-    sourceCount(story);
-
-  const summary =
-    usefulSummary(
-      story,
-      compact ? 38 : 70
-    );
-
-  const article =
-    document.createElement("article");
-
-  article.className =
-    `story-card ${
-      level === "critical"
-        ? "is-critical"
-        : ""
-    }`;
-
-
-  article.innerHTML = `
-    <div class="story-topline">
-
-      <span class="importance-label ${level}">
-        ${escapeHtml(level)}
-      </span>
-
-      <span class="category-label">
-        ${escapeHtml(
-          displayCategory(
-            story.category || "News"
-          )
-        )}
-      </span>
-
-      ${
-        isNewSinceVisit(story)
-          ? `
-            <span class="story-state">
-              NEW
-            </span>
-          `
-          : ""
-      }
-
-    </div>
-
-
-    <h3 class="story-title">
-      ${escapeHtml(story.title || "")}
-    </h3>
-
-
-    ${
-      showSummary && summary
-        ? `
-          <p class="story-summary">
-            ${escapeHtml(summary)}
-          </p>
-        `
-        : ""
-    }
-
-
-    ${marketImpactHtml(story)}
-
-
-    <div class="story-meta">
-
-      <span>
-        ${escapeHtml(publisher)}
-      </span>
-
-      <span class="meta-separator">·</span>
-
-      <span>
-        ${count}
-        ${count === 1 ? "source" : "sources"}
-      </span>
-
-      <span class="meta-separator">·</span>
-
-      <span>
-        ${escapeHtml(
-          timeAgo(
-            storyTimestamp(story)
-          )
-        )}
-      </span>
-
-    </div>
-
-
+function actions(s,id){
+  return`
     <div class="story-actions">
 
       <button
-        class="story-action coverage-button"
-        type="button"
+        class="story-action"
+        data-source="${esc(id)}"
       >
         ${
-          count > 1
-            ? `View ${count} sources`
-            : "View source"
+          sourceCount(s)>1
+            ?`View ${sourceCount(s)} sources`
+            :"View source"
         }
       </button>
 
-
       <a
         class="story-action"
-        href="${escapeHtml(primaryUrl(story))}"
+        href="${esc(url(s))}"
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener"
       >
-        Read ${escapeHtml(publisher)} →
+        Read ${esc(publisher(s))} →
       </a>
 
-
       <button
-        class="story-action save-button ${
-          isSaved(story)
-            ? "saved"
-            : ""
-        }"
-        type="button"
+        class="story-action save-button ${saved(s)?"saved":""}"
+        data-save="${esc(id)}"
       >
-        ${
-          isSaved(story)
-            ? "Saved"
-            : "Save"
-        }
+        ${saved(s)?"Saved":"Save"}
       </button>
 
     </div>
   `;
-
-
-  article
-    .querySelector(".coverage-button")
-    ?.addEventListener(
-      "click",
-      () => openSources(story)
-    );
-
-
-  article
-    .querySelector(".save-button")
-    ?.addEventListener(
-      "click",
-      () => toggleSaved(story)
-    );
-
-
-  return article;
 }
 
+function storyMarkup(s,kind="normal"){
+  const id=encodeURIComponent(key(s));
 
-function renderStoryCards(
-  container,
-  stories,
-  options = {}
-) {
-  if (!container) return;
+  return`
+    <article class="${
+      kind==="lead"
+        ?"lead-story"
+        :kind==="secondary"
+          ?"secondary-story"
+          :"story-card"
+    }">
 
-  container.innerHTML = "";
+      <div class="story-topline">
 
-  stories.forEach(story => {
-    container.appendChild(
-      storyCard(story, options)
-    );
-  });
-}
-
-
-/* ============================================================
-   EMPTY STATE
-   ============================================================ */
-
-function emptyStateHtml({
-  title = "Nothing important enough right now.",
-  description =
-    "No significant developments currently match this view.",
-  button = true
-} = {}) {
-  return `
-    <section class="empty-state">
-
-      <div
-        class="empty-state-icon"
-        aria-hidden="true"
-      >
-        ◇
-      </div>
-
-      <h2>
-        ${escapeHtml(title)}
-      </h2>
-
-      <p>
-        ${escapeHtml(description)}
-      </p>
-
-      ${
-        button
-          ? `
-            <button
-              class="primary-button empty-back-button"
-              type="button"
-            >
-              Back to The Brief
-            </button>
-          `
-          : ""
-      }
-
-    </section>
-  `;
-}
-
-
-function wireEmptyBackButton() {
-  document
-    .querySelector(".empty-back-button")
-    ?.addEventListener(
-      "click",
-      renderBrief
-    );
-}
-
-
-/* ============================================================
-   BRIEF
-   ============================================================ */
-
-function getBriefStories() {
-  const supplied =
-    Array.isArray(state.top)
-      ? state.top
-      : [];
-
-  if (supplied.length) {
-    return dedupeStories(supplied)
-      .slice(0, 8);
-  }
-
-  return sortByImportance(
-    state.clusters
-  ).slice(0, 8);
-}
-
-
-function renderBrief() {
-  state.currentView = "brief";
-  state.currentCategory = null;
-
-  closeMenu();
-  closeSearchPanel(false);
-
-  setActiveNavigation({
-    view: "brief"
-  });
-
-  setPageHeader(
-    "The Brief",
-    "What matters today, without the noise."
-  );
-
-  showSincePanel(true);
-  hideContextRail();
-
-
-  const stories =
-    getBriefStories();
-
-
-  if (!stories.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "No major developments right now.",
-        description:
-          "The briefing is deliberately quiet when the signal is weak."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  els.contentView.innerHTML = `
-    <section
-      id="briefSection"
-      class="content-section brief-section"
-    >
-
-      <div class="section-heading">
-
-        <div>
-
-          <div class="section-kicker">
-            TODAY'S BRIEF
-          </div>
-
-          <h2>
-            Developments worth your attention
-          </h2>
-
-        </div>
-
-        <span class="section-count">
-          ${stories.length}
+        <span class="importance-label ${level(s)}">
+          ${esc(level(s))}
         </span>
 
-      </div>
+        <span class="category-label">
+          ${esc(cat(s.category||"News"))}
+        </span>
 
-
-      <div
-        id="briefStories"
-        class="story-list brief-story-grid"
-      ></div>
-
-    </section>
-
-
-    ${renderDevelopingPreview()}
-
-
-    ${renderExplorePreview()}
-  `;
-
-
-  renderStoryCards(
-    $("briefStories"),
-    stories
-  );
-
-
-  wireDevelopingPreview();
-  wireExploreCards();
-}
-
-
-/* ============================================================
-   DEVELOPING PREVIEW
-   ============================================================ */
-
-function getDevelopingStories() {
-  return sortByImportance(
-    state.clusters.filter(
-      story =>
-        story.is_developing === true
-    )
-  );
-}
-
-
-function renderDevelopingPreview() {
-  const stories =
-    getDevelopingStories()
-      .slice(0, 4);
-
-  if (!stories.length) {
-    return "";
-  }
-
-
-  return `
-    <section
-      id="developingSection"
-      class="content-section developing-section"
-    >
-
-      <div class="section-heading">
-
-        <div>
-
-          <div class="section-kicker developing-kicker">
-            DEVELOPING NOW
-          </div>
-
-          <h2>
-            Stories still moving
-          </h2>
-
-        </div>
-
-        <button
-          class="quiet-button developing-all-button"
-          type="button"
-        >
-          View all
-        </button>
-
-      </div>
-
-
-      <div
-        class="developing-list"
-      >
-
-        ${stories.map(story => `
-          <article
-            class="developing-card"
-            data-story-key="${escapeHtml(storyKey(story))}"
-          >
-
-            <div class="developing-meta">
-              ${escapeHtml(
-                timeAgo(
-                  storyTimestamp(story)
-                )
-              )}
-            </div>
-
-            <h3>
-              ${escapeHtml(story.title || "")}
-            </h3>
-
-          </article>
-        `).join("")}
-
-      </div>
-
-    </section>
-  `;
-}
-
-
-function wireDevelopingPreview() {
-  document
-    .querySelector(".developing-all-button")
-    ?.addEventListener(
-      "click",
-      renderDeveloping
-    );
-
-
-  document
-    .querySelectorAll(".developing-card")
-    .forEach(card => {
-      card.addEventListener(
-        "click",
-        () => {
-          const story =
-            state.clusters.find(
-              item =>
-                storyKey(item) ===
-                card.dataset.storyKey
-            );
-
-          if (story) {
-            openSources(story);
-          }
+        ${
+          fresh(s)
+            ?'<span class="story-state">NEW</span>'
+            :""
         }
-      );
+
+      </div>
+
+      <h3 class="story-title">
+        ${esc(s.title||"")}
+      </h3>
+
+      ${
+        summary(
+          s,
+          kind==="lead"
+            ?62
+            :kind==="secondary"
+              ?32
+              :48
+        )
+          ?`
+            <p class="story-summary">
+              ${esc(summary(
+                s,
+                kind==="lead"
+                  ?62
+                  :kind==="secondary"
+                    ?32
+                    :48
+              ))}
+            </p>
+          `
+          :""
+      }
+
+      ${kind==="lead"?why(s):""}
+
+      ${meta(s)}
+
+      ${actions(s,id)}
+
+    </article>
+  `;
+}
+
+function wireStoryActions(){
+
+  document
+    .querySelectorAll("[data-source]")
+    .forEach(b=>{
+
+      b.onclick=()=>{
+
+        const s=
+          state.clusters.find(
+            x=>encodeURIComponent(key(x))===b.dataset.source
+          )||
+          state.top.find(
+            x=>encodeURIComponent(key(x))===b.dataset.source
+          );
+
+        if(s)openSources(s);
+      };
+
+    });
+
+  document
+    .querySelectorAll("[data-save]")
+    .forEach(b=>{
+
+      b.onclick=()=>{
+
+        const s=
+          state.clusters.find(
+            x=>encodeURIComponent(key(x))===b.dataset.save
+          )||
+          state.top.find(
+            x=>encodeURIComponent(key(x))===b.dataset.save
+          );
+
+        if(s)toggleSaved(s);
+      };
+
     });
 }
 
+function empty(title,desc){
 
-/* ============================================================
-   EXPLORE
-   ============================================================ */
+  els.contentView.innerHTML=`
+    <section class="empty-state">
 
-const exploreCategories = [
+      <div class="empty-state-icon">◇</div>
+
+      <h2>${esc(title)}</h2>
+
+      <p>${esc(desc)}</p>
+
+      <button
+        class="primary-button"
+        id="emptyHome"
+      >
+        Back to The Brief
+      </button>
+
+    </section>
+  `;
+
+  $("emptyHome").onclick=renderBrief;
+}
+
+const EXPLORE=[
   "India",
   "Indian Politics",
   "Macro Economics",
@@ -1004,132 +511,972 @@ const exploreCategories = [
   "Technology"
 ];
 
-
-function categoryCount(category) {
-  return state.clusters.filter(
-    story =>
-      story.category === category
-  ).length;
+function categoryStories(c){
+  return sort(
+    state.clusters.filter(
+      s=>matchesCategory(s,c)
+    )
+  );
 }
 
+function renderRail(){
 
-function renderExplorePreview() {
-  return `
-    <section
-      id="exploreSection"
-      class="content-section explore-section"
-    >
+  if(!els.glanceGrid)return;
+
+  els.glanceGrid.innerHTML=`
+    <div class="glance-item">
+      <div class="glance-value">
+        ${state.top.length||Math.min(8,state.clusters.length)}
+      </div>
+      <div class="glance-name">must know</div>
+    </div>
+
+    <div class="glance-item">
+      <div class="glance-value">
+        ${state.clusters.filter(s=>s.is_developing).length}
+      </div>
+      <div class="glance-name">developing</div>
+    </div>
+
+    <div class="glance-item">
+      <div class="glance-value">
+        ${state.data?.article_count||0}
+      </div>
+      <div class="glance-name">articles scanned</div>
+    </div>
+
+    <div class="glance-item">
+      <div class="glance-value">
+        ${state.clusters.length}
+      </div>
+      <div class="glance-name">events clustered</div>
+    </div>
+  `;
+
+  const f=
+    state.previousVisit
+      ?state.clusters.filter(fresh)
+      :[];
+
+  els.changedSummary.textContent=
+    state.previousVisit
+      ?(
+        f.length
+          ?`${Math.min(f.length,12)} developments are worth catching up on.`
+          :"You're caught up."
+      )
+      :"Your catch-up starts on your next visit.";
+
+  els.topicChips.innerHTML=
+    EXPLORE
+      .slice(0,6)
+      .map(c=>`
+        <button
+          class="topic-chip"
+          data-chip="${esc(c)}"
+        >
+          ${esc(cat(c))}
+        </button>
+      `)
+      .join("");
+
+  document
+    .querySelectorAll("[data-chip]")
+    .forEach(
+      b=>b.onclick=()=>showCategory(b.dataset.chip)
+    );
+}
+
+function renderBrief(){
+
+  state.currentView="brief";
+  state.currentCategory=null;
+
+  closeMenu();
+
+  setActive({view:"brief"});
+
+  setHeader(
+    "The Brief",
+    "What matters today, without the noise."
+  );
+
+  showSince(true);
+
+  const stories=
+    dedupe(
+      state.top.length
+        ?state.top
+        :sort(state.clusters)
+    ).slice(0,8);
+
+  if(!stories.length){
+    return empty(
+      "No major developments right now.",
+      "The briefing is deliberately quiet when the signal is weak."
+    );
+  }
+
+  const lead=stories[0];
+  const second=stories.slice(1,3);
+  const more=stories.slice(3);
+
+  const dev=
+    sort(
+      state.clusters.filter(
+        s=>s.is_developing
+      )
+    ).slice(0,4);
+
+  els.contentView.innerHTML=`
+    <section class="content-section">
 
       <div class="section-heading">
 
         <div>
-
           <div class="section-kicker">
-            EXPLORE
+            TODAY'S SIGNAL
+          </div>
+
+          <h2>
+            What deserves your attention
+          </h2>
+        </div>
+
+        <span class="section-count">
+          ${stories.length}
+        </span>
+
+      </div>
+
+      ${storyMarkup(lead,"lead")}
+
+      <div class="secondary-grid">
+        ${
+          second
+            .map(s=>storyMarkup(s,"secondary"))
+            .join("")
+        }
+      </div>
+
+      ${
+        more.length
+          ?`
+            <div class="brief-more">
+
+              <div class="section-kicker">
+                ALSO WORTH KNOWING
+              </div>
+
+              ${
+                more.map(s=>`
+                  <div class="compact-row">
+
+                    <span class="compact-category">
+                      ${esc(cat(s.category||"News"))}
+                    </span>
+
+                    <a
+                      class="compact-title"
+                      href="${esc(url(s))}"
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      ${esc(s.title||"")}
+                    </a>
+
+                    <span class="compact-time">
+                      ${esc(ago(stamp(s)))}
+                    </span>
+
+                  </div>
+                `).join("")
+              }
+
+            </div>
+          `
+          :""
+      }
+
+    </section>
+
+    ${
+      dev.length
+        ?`
+          <section class="content-section">
+
+            <div class="section-heading">
+
+              <div>
+                <div class="section-kicker">
+                  DEVELOPING NOW
+                </div>
+
+                <h2>
+                  Stories still moving
+                </h2>
+              </div>
+
+              <button
+                class="quiet-button"
+                id="allDeveloping"
+              >
+                View all →
+              </button>
+
+            </div>
+
+            <div class="developing-list">
+
+              ${
+                dev.map(s=>`
+                  <article
+                    class="developing-card"
+                    data-dev="${encodeURIComponent(key(s))}"
+                  >
+
+                    <div class="developing-meta">
+                      ${esc(cat(s.category||"News"))}
+                      ·
+                      ${esc(ago(stamp(s)))}
+                    </div>
+
+                    <h3>
+                      ${esc(s.title||"")}
+                    </h3>
+
+                  </article>
+                `).join("")
+              }
+
+            </div>
+
+          </section>
+        `
+        :""
+    }
+
+    <section class="content-section">
+
+      <div class="section-heading">
+
+        <div>
+          <div class="section-kicker">
+            GO DEEPER
           </div>
 
           <h2>
             Explore by topic
           </h2>
-
         </div>
 
       </div>
 
+      <div class="category-grid">
 
-      <div
-        id="categoryGrid"
-        class="category-grid"
-      >
-
-        ${exploreCategories.map(
-          category => `
+        ${
+          EXPLORE.map(c=>`
             <button
               class="category-card"
-              type="button"
-              data-explore-category="${escapeHtml(category)}"
+              data-explore="${esc(c)}"
             >
 
               <div class="category-card-name">
-                ${escapeHtml(
-                  displayCategory(category)
-                )}
+                ${esc(cat(c))}
               </div>
 
               <div class="category-card-count">
-                ${categoryCount(category)}
-                ${
-                  categoryCount(category) === 1
-                    ? "development"
-                    : "developments"
-                }
+                ${categoryStories(c).length}
+                developments →
               </div>
 
             </button>
-          `
-        ).join("")}
+          `).join("")
+        }
 
       </div>
 
     </section>
   `;
-}
 
+  wireStoryActions();
 
-function wireExploreCards() {
+  if($("allDeveloping")){
+    $("allDeveloping").onclick=renderDeveloping;
+  }
+
   document
-    .querySelectorAll(
-      "[data-explore-category]"
-    )
-    .forEach(button => {
-      button.addEventListener(
-        "click",
-        () => {
-          showCategory(
-            button.dataset.exploreCategory
+    .querySelectorAll("[data-dev]")
+    .forEach(b=>{
+
+      b.onclick=()=>{
+
+        const s=
+          state.clusters.find(
+            x=>encodeURIComponent(key(x))===b.dataset.dev
           );
-        }
-      );
+
+        if(s)openSources(s);
+      };
+
     });
+
+  document
+    .querySelectorAll("[data-explore]")
+    .forEach(
+      b=>b.onclick=()=>showCategory(b.dataset.explore)
+    );
 }
 
+function showCategory(c){
 
-function renderExplore() {
-  state.currentView = "explore";
-  state.currentCategory = null;
+  if(c==="Indian Markets"){
+    return renderMarkets();
+  }
+
+  state.currentView="category";
+  state.currentCategory=c;
 
   closeMenu();
 
-  setActiveNavigation({
-    view: "explore"
-  });
+  setActive({category:c});
 
-  setPageHeader(
+  setHeader(
+    cat(c),
+    `Significant developments in ${cat(c)}.`
+  );
+
+  showSince(true);
+
+  const a=categoryStories(c);
+
+  if(!a.length){
+    return empty(
+      `No significant ${cat(c).toLowerCase()} development right now.`,
+      "Nothing currently clears the briefing threshold for this topic. The page will populate automatically when qualifying stories arrive."
+    );
+  }
+
+  els.contentView.innerHTML=`
+    <section class="content-section">
+
+      <div class="view-header">
+
+        <div class="section-kicker">
+          DAILY INTELLIGENCE
+        </div>
+
+        <h2>
+          ${esc(cat(c))}
+        </h2>
+
+        <p>
+          ${a.length} developments
+        </p>
+
+      </div>
+
+      <div class="story-list">
+        ${a.map(s=>storyMarkup(s)).join("")}
+      </div>
+
+    </section>
+  `;
+
+  wireStoryActions();
+}
+
+function renderSince(){
+
+  state.currentView="since";
+  state.currentCategory=null;
+
+  closeMenu();
+
+  setActive({view:"since"});
+
+  setHeader(
+    "Since Last Check",
+    "The developments worth catching up on since your previous visit."
+  );
+
+  showSince(false);
+
+  if(!state.previousVisit){
+    return empty(
+      "Your catch-up starts after this visit.",
+      "When you return, this view will surface the most consequential developments published in between."
+    );
+  }
+
+  const all=
+    sort(
+      state.clusters.filter(fresh)
+    );
+
+  const a=all.slice(0,12);
+
+  if(!a.length){
+    return empty(
+      "You're caught up.",
+      "No new developments have cleared the briefing threshold since your last visit."
+    );
+  }
+
+  els.contentView.innerHTML=`
+    <section class="content-section">
+
+      <div class="view-header">
+
+        <div class="section-kicker">
+          YOUR CATCH-UP
+        </div>
+
+        <h2>
+          ${a.length} developments worth catching up on
+        </h2>
+
+        <p>
+          ${all.length} total new developments detected.
+          Showing the highest-priority ${a.length}.
+        </p>
+
+      </div>
+
+      <div class="story-list">
+        ${a.map(s=>storyMarkup(s)).join("")}
+      </div>
+
+    </section>
+  `;
+
+  wireStoryActions();
+}
+
+function renderDeveloping(){
+
+  state.currentView="developing";
+  state.currentCategory=null;
+
+  closeMenu();
+
+  setActive({view:"developing"});
+
+  setHeader(
+    "Developing",
+    "Stories still receiving material new information."
+  );
+
+  showSince(false);
+
+  const a=
+    sort(
+      state.clusters.filter(
+        s=>s.is_developing
+      )
+    );
+
+  if(!a.length){
+    return empty(
+      "Nothing material is actively developing.",
+      "When a story begins receiving consequential new information, it will move here."
+    );
+  }
+
+  els.contentView.innerHTML=`
+    <section class="content-section">
+
+      <div class="view-header">
+
+        <div class="section-kicker">
+          LIVE WATCH
+        </div>
+
+        <h2>
+          ${a.length} stories still moving
+        </h2>
+
+        <p>
+          Prioritised by significance and recency.
+        </p>
+
+      </div>
+
+      <div class="story-list">
+        ${a.map(s=>storyMarkup(s)).join("")}
+      </div>
+
+    </section>
+  `;
+
+  wireStoryActions();
+}
+
+function marketSet(cats){
+  return sort(
+    state.clusters.filter(
+      s=>cats.some(
+        c=>matchesCategory(s,c)
+      )
+    )
+  );
+}
+
+function marketItem(s){
+  return`
+    <article class="market-item">
+
+      <div class="story-topline">
+        <span class="category-label">
+          ${esc(cat(s.category||"Markets"))}
+        </span>
+      </div>
+
+      <h3>
+        <a
+          href="${esc(url(s))}"
+          target="_blank"
+          rel="noopener"
+        >
+          ${esc(s.title||"")}
+        </a>
+      </h3>
+
+      ${
+        summary(s,30)
+          ?`
+            <p>
+              ${esc(summary(s,30))}
+            </p>
+          `
+          :""
+      }
+
+      ${meta(s)}
+
+    </article>
+  `;
+}
+
+function renderMarkets(){
+
+  state.currentView="markets";
+  state.currentCategory=null;
+
+  closeMenu();
+
+  setActive({view:"markets"});
+
+  setHeader(
+    "Markets",
+    "Indian markets, companies and investing — without the trading noise."
+  );
+
+  showSince(true);
+
+  const india=
+    marketSet([
+      "Indian Markets",
+      "Macro Economics"
+    ]);
+
+  const companies=
+    marketSet([
+      "Business & Micro"
+    ]);
+
+  const global=
+    sort(
+      state.clusters.filter(
+        s=>
+          norm(s.category)==="global india"||
+          s.category==="Global → India"
+      )
+    );
+
+  const all=
+    dedupe(
+      sort([
+        ...india,
+        ...companies,
+        ...global
+      ])
+    );
+
+  const lead=all[0];
+  const side=all.slice(1,3);
+
+  if(!lead){
+    return empty(
+      "No material market development right now.",
+      "Routine price movement is deliberately filtered out. Material market, corporate and investing developments will appear here."
+    );
+  }
+
+  const ipos=[
+    ...(state.markets.ipo_open||[]),
+    ...(state.markets.ipo_upcoming||[]),
+    ...(state.markets.ipo_recent||[])
+  ].slice(0,6);
+
+  const mf=
+    dedupe(
+      state.markets.mutual_fund_news||
+      state.clusters.filter(
+        s=>
+          /mutual fund|amfi|\bsip\b/i.test(
+            `${s.title||""} ${s.description||""}`
+          )
+      )
+    ).slice(0,4);
+
+  els.contentView.innerHTML=`
+    <div class="markets-dashboard">
+
+      <section class="market-pulse-strip">
+
+        <div class="pulse-card">
+          <div class="pulse-label">
+            Market signal
+          </div>
+          <div class="pulse-value">
+            ${india.length} India
+          </div>
+        </div>
+
+        <div class="pulse-card">
+          <div class="pulse-label">
+            Corporate
+          </div>
+          <div class="pulse-value">
+            ${companies.length} stories
+          </div>
+        </div>
+
+        <div class="pulse-card">
+          <div class="pulse-label">
+            Global → India
+          </div>
+          <div class="pulse-value">
+            ${global.length} links
+          </div>
+        </div>
+
+        <div class="pulse-card">
+          <div class="pulse-label">
+            IPO watch
+          </div>
+          <div class="pulse-value">
+            ${ipos.length} tracked
+          </div>
+        </div>
+
+      </section>
+
+      <section class="market-hero">
+
+        <article class="market-lead-card">
+
+          <div class="story-topline">
+
+            <span class="importance-label ${level(lead)}">
+              ${esc(level(lead))}
+            </span>
+
+            <span class="category-label">
+              ${esc(cat(lead.category||"Markets"))}
+            </span>
+
+          </div>
+
+          <h2>
+            ${esc(lead.title||"")}
+          </h2>
+
+          <p class="story-summary">
+            ${esc(summary(lead,62))}
+          </p>
+
+          ${why(lead)}
+
+          ${meta(lead)}
+
+          ${actions(
+            lead,
+            encodeURIComponent(key(lead))
+          )}
+
+        </article>
+
+        <div class="market-side-stack">
+
+          ${
+            side.map(s=>`
+              <article class="market-mini">
+
+                <div class="section-kicker">
+                  ${esc(cat(s.category||"Markets"))}
+                </div>
+
+                <h3>
+                  <a
+                    href="${esc(url(s))}"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    ${esc(s.title||"")}
+                  </a>
+                </h3>
+
+                ${meta(s)}
+
+              </article>
+            `).join("")
+          }
+
+        </div>
+
+      </section>
+
+      ${
+        india.slice(1,7).length
+          ?`
+            <section class="market-module">
+
+              <div class="market-module-head">
+
+                <div>
+                  <div class="section-kicker">
+                    INDIA TODAY
+                  </div>
+
+                  <h2>
+                    Market & policy intelligence
+                  </h2>
+                </div>
+
+              </div>
+
+              <div class="market-module-grid">
+                ${
+                  india
+                    .slice(1,7)
+                    .map(marketItem)
+                    .join("")
+                }
+              </div>
+
+            </section>
+          `
+          :""
+      }
+
+      ${
+        global.length
+          ?`
+            <section class="market-module">
+
+              <div class="market-module-head">
+
+                <div>
+                  <div class="section-kicker">
+                    TRANSMISSION WATCH
+                  </div>
+
+                  <h2>
+                    Global → India
+                  </h2>
+                </div>
+
+              </div>
+
+              <div class="market-module-grid">
+                ${
+                  global
+                    .slice(0,4)
+                    .map(marketItem)
+                    .join("")
+                }
+              </div>
+
+            </section>
+          `
+          :""
+      }
+
+      ${
+        companies.length
+          ?`
+            <section class="market-module">
+
+              <div class="market-module-head">
+
+                <div>
+                  <div class="section-kicker">
+                    CORPORATE INDIA
+                  </div>
+
+                  <h2>
+                    Companies
+                  </h2>
+                </div>
+
+              </div>
+
+              <div class="market-module-grid">
+                ${
+                  companies
+                    .slice(0,6)
+                    .map(marketItem)
+                    .join("")
+                }
+              </div>
+
+            </section>
+          `
+          :""
+      }
+
+      ${
+        ipos.length
+          ?`
+            <section class="market-module">
+
+              <div class="market-module-head">
+
+                <div>
+                  <div class="section-kicker">
+                    PRIMARY MARKET
+                  </div>
+
+                  <h2>
+                    IPO watch
+                  </h2>
+                </div>
+
+              </div>
+
+              <div class="ipo-grid">
+
+                ${
+                  ipos.map(i=>`
+                    <article class="ipo-card">
+
+                      <div class="section-kicker">
+                        ${esc(i.status||"IPO")}
+                      </div>
+
+                      <h3>
+                        ${
+                          i.url
+                            ?`
+                              <a
+                                href="${esc(i.url)}"
+                                target="_blank"
+                                rel="noopener"
+                              >
+                                ${esc(i.name||"")}
+                              </a>
+                            `
+                            :esc(i.name||"")
+                        }
+                      </h3>
+
+                      <div class="ipo-facts">
+
+                        ${
+                          [
+                            i.price_band,
+                            i.issue_size,
+                            i.lot_size
+                              ?`Lot ${i.lot_size}`
+                              :null,
+                            i.close_date
+                              ?`Closes ${i.close_date}`
+                              :null
+                          ]
+                          .filter(Boolean)
+                          .map(
+                            x=>`
+                              <span class="ipo-fact">
+                                ${esc(x)}
+                              </span>
+                            `
+                          )
+                          .join("")
+                        }
+
+                      </div>
+
+                    </article>
+                  `).join("")
+                }
+
+              </div>
+
+            </section>
+          `
+          :""
+      }
+
+      ${
+        mf.length
+          ?`
+            <section class="market-module">
+
+              <div class="market-module-head">
+
+                <div>
+                  <div class="section-kicker">
+                    HOUSEHOLD INVESTING
+                  </div>
+
+                  <h2>
+                    Mutual funds
+                  </h2>
+                </div>
+
+              </div>
+
+              <div class="market-module-grid">
+                ${mf.map(marketItem).join("")}
+              </div>
+
+            </section>
+          `
+          :""
+      }
+
+    </div>
+  `;
+
+  wireStoryActions();
+}
+
+function renderExplore(){
+
+  state.currentView="explore";
+  state.currentCategory=null;
+
+  closeMenu();
+
+  setActive({view:"explore"});
+
+  setHeader(
     "Explore",
     "Move through today's intelligence by topic."
   );
 
-  showSincePanel(false);
-  hideContextRail();
+  showSince(false);
 
-
-  const categories = [
-    "India",
-    "Indian Politics",
-    "Macro Economics",
-    "Business & Micro",
-    "Indian Markets",
-    "World",
-    "Geopolitics",
+  const a=[
+    ...EXPLORE,
     "World Politics",
-    "AI",
-    "Technology",
     "Science & Climate",
     "The Ken"
   ];
 
-
-  els.contentView.innerHTML = `
+  els.contentView.innerHTML=`
     <section class="content-section">
 
       <div class="section-heading">
@@ -1148,414 +1495,67 @@ function renderExplore() {
 
       </div>
 
-
       <div class="category-grid">
 
-        ${categories.map(
-          category => `
+        ${
+          a.map(c=>`
             <button
               class="category-card"
-              type="button"
-              data-explore-category="${escapeHtml(category)}"
+              data-explore="${esc(c)}"
             >
 
               <div class="category-card-name">
-                ${escapeHtml(
-                  displayCategory(category)
-                )}
+                ${esc(cat(c))}
               </div>
 
               <div class="category-card-count">
-                ${categoryCount(category)}
-                ${
-                  categoryCount(category) === 1
-                    ? "development"
-                    : "developments"
-                }
+                ${categoryStories(c).length}
+                developments →
               </div>
 
             </button>
-          `
-        ).join("")}
+          `).join("")
+        }
 
       </div>
 
     </section>
   `;
 
-
-  wireExploreCards();
-}
-
-
-/* ============================================================
-   CATEGORY VIEW
-   ============================================================ */
-
-function showCategory(category) {
-  if (
-    category === "Indian Markets"
-  ) {
-    renderMarkets();
-    return;
-  }
-
-
-  state.currentView = "category";
-  state.currentCategory = category;
-
-  closeMenu();
-
-  setActiveNavigation({
-    category
-  });
-
-
-  const stories =
-    sortByImportance(
-      state.clusters.filter(
-        story =>
-          story.category === category
-      )
+  document
+    .querySelectorAll("[data-explore]")
+    .forEach(
+      b=>b.onclick=()=>showCategory(b.dataset.explore)
     );
-
-
-  const label =
-    displayCategory(category);
-
-
-  setPageHeader(
-    label,
-    `Significant developments in ${label}.`
-  );
-
-
-  showSincePanel(true);
-  hideContextRail();
-
-
-  if (!stories.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          `No significant ${label.toLowerCase()} development right now.`,
-        description:
-          "That doesn't mean nothing is happening. It means nothing currently clears the briefing threshold."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  els.contentView.innerHTML = `
-    <section class="content-section category-view">
-
-      <div class="view-header">
-
-        <div class="section-kicker">
-          DAILY INTELLIGENCE
-        </div>
-
-        <h2>
-          ${escapeHtml(label)}
-        </h2>
-
-        <p>
-          ${stories.length}
-          ${
-            stories.length === 1
-              ? "development"
-              : "developments"
-          }
-        </p>
-
-      </div>
-
-
-      <div
-        id="categoryStoryList"
-        class="story-list"
-      ></div>
-
-    </section>
-  `;
-
-
-  renderStoryCards(
-    $("categoryStoryList"),
-    stories
-  );
 }
 
+function renderSaved(){
 
-/* ============================================================
-   SINCE LAST CHECK
-   ============================================================ */
-
-function getFreshStories() {
-  if (!state.previousVisit) {
-    return [];
-  }
-
-  return state.clusters.filter(
-    isNewSinceVisit
-  );
-}
-
-
-function getCatchupStories() {
-  const fresh =
-    sortByImportance(
-      getFreshStories()
-    );
-
-  /*
-    Keep the catch-up intentionally finite.
-    This does NOT alter the underlying data.
-  */
-
-  return fresh.slice(0, 12);
-}
-
-
-function renderSince() {
-  state.currentView = "since";
-  state.currentCategory = null;
+  state.currentView="saved";
+  state.currentCategory=null;
 
   closeMenu();
 
-  setActiveNavigation({
-    view: "since"
-  });
+  setActive({view:"saved"});
 
-  setPageHeader(
-    "Since Last Check",
-    "The developments worth catching up on since your previous visit."
-  );
-
-  showSincePanel(false);
-  hideContextRail();
-
-
-  if (!state.previousVisit) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "Your catch-up starts after this visit.",
-        description:
-          "When you return, this view will surface the most consequential developments published in between."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  const allFresh =
-    sortByImportance(
-      getFreshStories()
-    );
-
-  const catchup =
-    getCatchupStories();
-
-
-  if (!allFresh.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "You're caught up.",
-        description:
-          "No new developments have cleared the briefing threshold since your last visit."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  els.contentView.innerHTML = `
-    <section class="content-section">
-
-      <div class="view-header">
-
-        <div class="section-kicker">
-          SINCE YOU LAST CHECKED
-        </div>
-
-        <h2>
-          ${catchup.length}
-          ${
-            catchup.length === 1
-              ? "development"
-              : "developments"
-          }
-          worth catching up on
-        </h2>
-
-        <p>
-          ${allFresh.length}
-          total new
-          ${
-            allFresh.length === 1
-              ? "development was"
-              : "developments were"
-          }
-          detected. Showing the highest-priority ${catchup.length}.
-        </p>
-
-      </div>
-
-
-      <div
-        id="sinceStoryList"
-        class="story-list"
-      ></div>
-
-    </section>
-  `;
-
-
-  renderStoryCards(
-    $("sinceStoryList"),
-    catchup
-  );
-}
-
-
-/* ============================================================
-   DEVELOPING VIEW
-   ============================================================ */
-
-function renderDeveloping() {
-  state.currentView = "developing";
-  state.currentCategory = null;
-
-  closeMenu();
-
-  setActiveNavigation({
-    view: "developing"
-  });
-
-  setPageHeader(
-    "Developing",
-    "Stories still receiving material new information."
-  );
-
-  showSincePanel(false);
-  hideContextRail();
-
-
-  const stories =
-    getDevelopingStories();
-
-
-  if (!stories.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "Nothing material is actively developing.",
-        description:
-          "When a story begins receiving consequential new information, it will move here."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  els.contentView.innerHTML = `
-    <section class="content-section developing-section">
-
-      <div class="section-heading">
-
-        <div>
-
-          <div class="section-kicker developing-kicker">
-            LIVE WATCH
-          </div>
-
-          <h2>
-            ${stories.length}
-            ${
-              stories.length === 1
-                ? "story"
-                : "stories"
-            }
-            still moving
-          </h2>
-
-        </div>
-
-      </div>
-
-
-      <div
-        id="developingFullList"
-        class="story-list"
-      ></div>
-
-    </section>
-  `;
-
-
-  renderStoryCards(
-    $("developingFullList"),
-    stories
-  );
-}
-
-
-/* ============================================================
-   SAVED
-   ============================================================ */
-
-function renderSaved() {
-  state.currentView = "saved";
-  state.currentCategory = null;
-
-  closeMenu();
-
-  setActiveNavigation({
-    view: "saved"
-  });
-
-  setPageHeader(
+  setHeader(
     "Saved",
     "Stories you've kept for later."
   );
 
-  showSincePanel(false);
-  hideContextRail();
+  showSince(false);
 
+  const a=
+    state.clusters.filter(saved);
 
-  const stories =
-    state.clusters.filter(
-      isSaved
+  if(!a.length){
+    return empty(
+      "Nothing saved yet.",
+      "Save a development when you want to return to it later."
     );
-
-
-  if (!stories.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "Nothing saved yet.",
-        description:
-          "Save a development when you want to return to it without searching for it again."
-      });
-
-    wireEmptyBackButton();
-
-    return;
   }
 
-
-  els.contentView.innerHTML = `
+  els.contentView.innerHTML=`
     <section class="content-section">
 
       <div class="view-header">
@@ -1569,1101 +1569,46 @@ function renderSaved() {
         </h2>
 
         <p>
-          ${stories.length}
-          ${
-            stories.length === 1
-              ? "story"
-              : "stories"
-          }
+          ${a.length} stories
         </p>
 
       </div>
 
-
-      <div
-        id="savedStoryList"
-        class="story-list"
-      ></div>
-
-    </section>
-  `;
-
-
-  renderStoryCards(
-    $("savedStoryList"),
-    stories
-  );
-}
-
-
-/* ============================================================
-   MARKETS
-   V6 — NOT A NEWSPAPER
-   ============================================================ */
-
-function marketStoriesByCategory(
-  categories
-) {
-  return sortByImportance(
-    state.clusters.filter(
-      story =>
-        categories.includes(
-          story.category
-        )
-    )
-  );
-}
-
-
-function compactMarketCard(story) {
-  if (!story) return "";
-
-  return `
-    <article class="market-secondary-item">
-
-      <div class="story-topline">
-
-        <span class="importance-label ${importanceLevel(story)}">
-          ${escapeHtml(
-            importanceLevel(story)
-          )}
-        </span>
-
-        <span class="category-label">
-          ${escapeHtml(
-            displayCategory(
-              story.category || "Markets"
-            )
-          )}
-        </span>
-
-      </div>
-
-
-      <h3>
-        <a
-          href="${escapeHtml(primaryUrl(story))}"
-          target="_blank"
-          rel="noopener noreferrer"
-          style="text-decoration:none"
-        >
-          ${escapeHtml(story.title || "")}
-        </a>
-      </h3>
-
-
-      <div class="story-meta">
-
-        <span>
-          ${escapeHtml(
-            primaryPublisher(story)
-          )}
-        </span>
-
-        <span>·</span>
-
-        <span>
-          ${escapeHtml(
-            timeAgo(
-              storyTimestamp(story)
-            )
-          )}
-        </span>
-
-      </div>
-
-    </article>
-  `;
-}
-
-
-function marketHeadlineItem(story) {
-  if (!story) return "";
-
-  const summary =
-    usefulSummary(story, 35);
-
-  return `
-    <article class="market-headline-row">
-
-      <a
-        href="${escapeHtml(primaryUrl(story))}"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <h3>
-          ${escapeHtml(story.title || "")}
-        </h3>
-      </a>
-
-      ${
-        summary
-          ? `
-            <p>
-              ${escapeHtml(summary)}
-            </p>
-          `
-          : ""
-      }
-
-      <div class="story-meta">
-
-        <span>
-          ${escapeHtml(
-            primaryPublisher(story)
-          )}
-        </span>
-
-        <span>·</span>
-
-        <span>
-          ${escapeHtml(
-            timeAgo(
-              storyTimestamp(story)
-            )
-          )}
-        </span>
-
-      </div>
-
-    </article>
-  `;
-}
-
-
-function marketSectionHeader(
-  title,
-  kicker = ""
-) {
-  return `
-    <div class="market-section-header">
-
-      <div>
-
-        ${
-          kicker
-            ? `
-              <div class="section-kicker">
-                ${escapeHtml(kicker)}
-              </div>
-            `
-            : ""
-        }
-
-        <h2>
-          ${escapeHtml(title)}
-        </h2>
-
-      </div>
-
-    </div>
-  `;
-}
-
-
-function renderIPOCard(ipo) {
-  const details = [
-    ipo.price_band
-      ? `Price ${ipo.price_band}`
-      : null,
-
-    ipo.issue_size
-      ? `Issue ${ipo.issue_size}`
-      : null,
-
-    ipo.lot_size
-      ? `Lot ${ipo.lot_size}`
-      : null,
-
-    ipo.close_date
-      ? `Closes ${ipo.close_date}`
-      : null
-  ].filter(Boolean);
-
-
-  return `
-    <article class="ipo-newspaper-item">
-
-      <div class="ipo-status">
-        ${escapeHtml(
-          ipo.status || "IPO"
-        )}
-      </div>
-
-      <h3>
-        ${
-          ipo.url
-            ? `
-              <a
-                href="${escapeHtml(ipo.url)}"
-                target="_blank"
-                rel="noopener noreferrer"
-                style="text-decoration:none"
-              >
-                ${escapeHtml(ipo.name || "")}
-              </a>
-            `
-            : escapeHtml(
-                ipo.name || ""
-              )
-        }
-      </h3>
-
-
-      ${
-        details.length
-          ? `
-            <div class="ipo-facts">
-
-              ${details.map(
-                detail => `
-                  <span>
-                    ${escapeHtml(detail)}
-                  </span>
-                `
-              ).join("")}
-
-            </div>
-          `
-          : ""
-      }
-
-
-      ${
-        ipo.what_to_know
-          ? `
-            <p class="story-summary">
-              ${escapeHtml(
-                truncateWords(
-                  ipo.what_to_know,
-                  35
-                )
-              )}
-            </p>
-          `
-          : ""
-      }
-
-    </article>
-  `;
-}
-
-
-function renderIPOModule() {
-  const structured = [
-    ...(state.markets.ipo_open || []),
-    ...(state.markets.ipo_upcoming || []),
-    ...(state.markets.ipo_recent || [])
-  ].slice(0, 6);
-
-
-  if (structured.length) {
-    return `
-      <section class="market-section">
-
-        ${marketSectionHeader(
-          "IPOs",
-          "PRIMARY MARKET"
-        )}
-
-        <div class="ipo-newspaper-grid">
-          ${structured
-            .map(renderIPOCard)
-            .join("")}
-        </div>
-
-      </section>
-    `;
-  }
-
-
-  const stories =
-    marketStoriesByCategory(
-      ["IPO"]
-    ).slice(0, 5);
-
-
-  if (!stories.length) {
-    return "";
-  }
-
-
-  return `
-    <section class="market-section">
-
-      ${marketSectionHeader(
-        "IPOs",
-        "PRIMARY MARKET"
-      )}
-
-      <div class="market-news-columns">
-
-        <div>
-          ${stories
-            .slice(0, 3)
-            .map(marketHeadlineItem)
-            .join("")}
-        </div>
-
-        <div class="market-news-column">
-          ${stories
-            .slice(3)
-            .map(marketHeadlineItem)
-            .join("")}
-        </div>
-
+      <div class="story-list">
+        ${a.map(s=>storyMarkup(s)).join("")}
       </div>
 
     </section>
   `;
+
+  wireStoryActions();
 }
 
+function renderSources(){
 
-function getMutualFundStories() {
-  let stories =
-    Array.isArray(
-      state.markets.mutual_fund_news
-    )
-      ? state.markets.mutual_fund_news
-      : [];
-
-
-  if (!stories.length) {
-    stories =
-      state.clusters.filter(
-        story => {
-          const text =
-            `${story.title || ""} ${
-              story.description || ""
-            }`
-              .toLowerCase();
-
-          return (
-            story.category === "Mutual Funds" ||
-            text.includes("mutual fund") ||
-            text.includes("amfi") ||
-            text.includes("sip contribution") ||
-            text.includes("fund inflow")
-          );
-        }
-      );
-  }
-
-
-  return dedupeStories(
-    stories
-  ).slice(0, 6);
-}
-
-
-function renderMutualFundsModule() {
-  const stories =
-    getMutualFundStories();
-
-
-  if (!stories.length) {
-    return "";
-  }
-
-
-  return `
-    <section class="market-section">
-
-      ${marketSectionHeader(
-        "Mutual Funds",
-        "HOUSEHOLD INVESTING"
-      )}
-
-      <div class="market-news-columns">
-
-        <div>
-          ${stories
-            .slice(0, 3)
-            .map(marketHeadlineItem)
-            .join("")}
-        </div>
-
-        <div class="market-news-column">
-          ${stories
-            .slice(3)
-            .map(marketHeadlineItem)
-            .join("")}
-        </div>
-
-      </div>
-
-    </section>
-  `;
-}
-
-
-function renderMarkets() {
-  state.currentView = "markets";
-  state.currentCategory = null;
+  state.currentView="sources";
 
   closeMenu();
 
-  setActiveNavigation({
-    view: "markets"
-  });
+  setActive({view:"sources"});
 
-  setPageHeader(
-    "Markets",
-    "Indian markets, companies and investing."
-  );
-
-  showSincePanel(true);
-  hideContextRail();
-
-
-  const india =
-    marketStoriesByCategory([
-      "Indian Markets",
-      "Macro Economics"
-    ]);
-
-
-  const companies =
-    marketStoriesByCategory([
-      "Companies & Earnings",
-      "Business & Micro"
-    ]);
-
-
-  const globalIndia =
-    marketStoriesByCategory([
-      "Global → India"
-    ]);
-
-
-  const combined =
-    dedupeStories(
-      sortByImportance([
-        ...india,
-        ...companies,
-        ...globalIndia
-      ])
-    );
-
-
-  const lead =
-    combined[0] || null;
-
-
-  const secondary =
-    combined
-      .filter(
-        story =>
-          storyKey(story) !==
-          storyKey(lead || {})
-      )
-      .slice(0, 3);
-
-
-  const used =
-    new Set(
-      [lead, ...secondary]
-        .filter(Boolean)
-        .map(storyKey)
-    );
-
-
-  const indiaMore =
-    india
-      .filter(
-        story =>
-          !used.has(
-            storyKey(story)
-          )
-      )
-      .slice(0, 6);
-
-
-  const globalMore =
-    globalIndia
-      .filter(
-        story =>
-          !used.has(
-            storyKey(story)
-          )
-      )
-      .slice(0, 5);
-
-
-  const companyMore =
-    companies
-      .filter(
-        story =>
-          storyKey(story) !==
-          storyKey(lead || {})
-      )
-      .slice(0, 6);
-
-
-  if (!lead) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "No material market development right now.",
-        description:
-          "Routine price movement is deliberately filtered out. Material market, corporate and investing developments will appear here."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  const leadSummary =
-    usefulSummary(lead, 90);
-
-
-  els.contentView.innerHTML = `
-    <div class="markets-front-page">
-
-
-      <section class="markets-top-grid">
-
-        <article class="market-lead">
-
-          <div class="story-topline">
-
-            <span class="importance-label ${importanceLevel(lead)}">
-              ${escapeHtml(
-                importanceLevel(lead)
-              )}
-            </span>
-
-            <span class="category-label">
-              ${escapeHtml(
-                displayCategory(
-                  lead.category || "Markets"
-                )
-              )}
-            </span>
-
-          </div>
-
-
-          <h2>
-            ${escapeHtml(
-              lead.title || ""
-            )}
-          </h2>
-
-
-          ${
-            leadSummary
-              ? `
-                <p class="market-lead-summary">
-                  ${escapeHtml(
-                    leadSummary
-                  )}
-                </p>
-              `
-              : ""
-          }
-
-
-          ${marketImpactHtml(lead)}
-
-
-          <div class="story-meta">
-
-            <span>
-              ${escapeHtml(
-                primaryPublisher(lead)
-              )}
-            </span>
-
-            <span>·</span>
-
-            <span>
-              ${sourceCount(lead)}
-              ${
-                sourceCount(lead) === 1
-                  ? "source"
-                  : "sources"
-              }
-            </span>
-
-            <span>·</span>
-
-            <span>
-              ${escapeHtml(
-                timeAgo(
-                  storyTimestamp(lead)
-                )
-              )}
-            </span>
-
-          </div>
-
-
-          <div class="story-actions">
-
-            <button
-              id="marketLeadSources"
-              class="story-action"
-              type="button"
-            >
-              ${
-                sourceCount(lead) > 1
-                  ? `View ${sourceCount(lead)} sources`
-                  : "View source"
-              }
-            </button>
-
-            <a
-              class="story-action"
-              href="${escapeHtml(
-                primaryUrl(lead)
-              )}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Read ${escapeHtml(
-                primaryPublisher(lead)
-              )} →
-            </a>
-
-          </div>
-
-        </article>
-
-
-        <div class="market-secondary">
-
-          <div class="section-kicker">
-            ALSO WORTH KNOWING
-          </div>
-
-          ${secondary
-            .map(compactMarketCard)
-            .join("")}
-
-        </div>
-
-      </section>
-
-
-      ${
-        indiaMore.length ||
-        globalMore.length
-          ? `
-            <section class="market-section">
-
-              ${marketSectionHeader(
-                "Market intelligence",
-                "INDIA & THE WORLD"
-              )}
-
-              <div class="market-news-columns">
-
-                <div class="market-news-column">
-
-                  <div class="market-column-title">
-                    India
-                  </div>
-
-                  ${
-                    indiaMore.length
-                      ? indiaMore
-                          .map(marketHeadlineItem)
-                          .join("")
-                      : `
-                        <div class="loading-card">
-                          No additional India market signal.
-                        </div>
-                      `
-                  }
-
-                </div>
-
-
-                <div class="market-news-column">
-
-                  <div class="market-column-title">
-                    Global → India
-                  </div>
-
-                  ${
-                    globalMore.length
-                      ? globalMore
-                          .map(marketHeadlineItem)
-                          .join("")
-                      : `
-                        <div class="loading-card">
-                          No material global transmission story right now.
-                        </div>
-                      `
-                  }
-
-                </div>
-
-              </div>
-
-            </section>
-          `
-          : ""
-      }
-
-
-      ${
-        companyMore.length
-          ? `
-            <section class="market-section">
-
-              ${marketSectionHeader(
-                "Companies",
-                "CORPORATE INDIA"
-              )}
-
-              <div class="market-news-columns">
-
-                <div class="market-news-column">
-                  ${companyMore
-                    .slice(0, 3)
-                    .map(marketHeadlineItem)
-                    .join("")}
-                </div>
-
-                <div class="market-news-column">
-                  ${companyMore
-                    .slice(3, 6)
-                    .map(marketHeadlineItem)
-                    .join("")}
-                </div>
-
-              </div>
-
-            </section>
-          `
-          : ""
-      }
-
-
-      ${renderIPOModule()}
-
-
-      ${renderMutualFundsModule()}
-
-
-      <div class="market-editorial-note">
-
-        Markets filters for material economic,
-        corporate, IPO and investing developments.
-        Routine price moves and low-signal market chatter
-        are intentionally deprioritised.
-
-      </div>
-
-    </div>
-  `;
-
-
-  $("marketLeadSources")
-    ?.addEventListener(
-      "click",
-      () => openSources(lead)
-    );
-}
-
-
-/* ============================================================
-   SEARCH
-   ============================================================ */
-
-function openSearchPanel() {
-  els.searchPanel?.classList.remove(
-    "hidden"
-  );
-
-  window.setTimeout(
-    () => els.searchInput?.focus(),
-    20
-  );
-}
-
-
-function closeSearchPanel(
-  restoreBrief = false
-) {
-  els.searchPanel?.classList.add(
-    "hidden"
-  );
-
-  if (restoreBrief) {
-    if (els.searchInput) {
-      els.searchInput.value = "";
-    }
-
-    renderBrief();
-  }
-}
-
-
-function searchStories(query) {
-  const q =
-    query
-      .trim()
-      .toLowerCase();
-
-
-  if (!q) {
-    renderBrief();
-    return;
-  }
-
-
-  const results =
-    sortByImportance(
-      state.clusters.filter(
-        story =>
-          [
-            story.title,
-            story.description,
-            story.brief,
-            story.category,
-            story.market_impact,
-            ...(story.sources || [])
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)
-      )
-    );
-
-
-  state.currentView = "search";
-  state.currentCategory = null;
-
-
-  setActiveNavigation();
-
-
-  setPageHeader(
-    "Search",
-    `${results.length} results for “${query}”.`
-  );
-
-
-  showSincePanel(false);
-  hideContextRail();
-
-
-  if (!results.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          `No results for “${query}”.`,
-        description:
-          "Try a broader topic, company, person or country."
-      });
-
-    wireEmptyBackButton();
-
-    return;
-  }
-
-
-  els.contentView.innerHTML = `
-    <section class="content-section search-results">
-
-      <div class="view-header">
-
-        <div class="section-kicker">
-          SEARCH
-        </div>
-
-        <h2>
-          Results for “${escapeHtml(query)}”
-        </h2>
-
-        <p>
-          ${results.length}
-          ${
-            results.length === 1
-              ? "result"
-              : "results"
-          }
-        </p>
-
-      </div>
-
-
-      <div
-        id="searchStoryList"
-        class="story-list"
-      ></div>
-
-    </section>
-  `;
-
-
-  renderStoryCards(
-    $("searchStoryList"),
-    results
-  );
-}
-
-
-/* ============================================================
-   SOURCE SHEET
-   ============================================================ */
-
-function openSources(story) {
-  if (
-    !els.sheetTitle ||
-    !els.sheetSources ||
-    !els.sourceSheet
-  ) {
-    return;
-  }
-
-
-  const articles =
-    Array.isArray(story.articles)
-      ? story.articles
-      : [];
-
-
-  const sources =
-    articles.length
-      ? articles
-      : [{
-          source:
-            primaryPublisher(story),
-
-          title:
-            story.title,
-
-          url:
-            primaryUrl(story),
-
-          published_at:
-            storyTimestamp(story)
-        }];
-
-
-  els.sheetTitle.textContent =
-    story.title || "Coverage";
-
-
-  els.sheetSources.innerHTML =
-    sources.map(
-      article => `
-        <a
-          class="sheet-source"
-          href="${escapeHtml(
-            article.url || "#"
-          )}"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-
-          <div class="sheet-source-name">
-            ${escapeHtml(
-              article.source || "Source"
-            )}
-          </div>
-
-          <div class="sheet-source-title">
-            ${escapeHtml(
-              article.title ||
-              story.title ||
-              ""
-            )}
-          </div>
-
-          <div class="sheet-source-time">
-            ${escapeHtml(
-              timeAgo(
-                article.published_at
-              )
-            )}
-          </div>
-
-        </a>
-      `
-    ).join("");
-
-
-  els.sourceSheet.classList.remove(
-    "hidden"
-  );
-
-  els.sourceSheet.setAttribute(
-    "aria-hidden",
-    "false"
-  );
-
-  document.body.style.overflow =
-    "hidden";
-}
-
-
-function closeSources() {
-  els.sourceSheet?.classList.add(
-    "hidden"
-  );
-
-  els.sourceSheet?.setAttribute(
-    "aria-hidden",
-    "true"
-  );
-
-  document.body.style.overflow = "";
-}
-
-
-/* ============================================================
-   SOURCES VIEW
-   ============================================================ */
-
-function renderSources() {
-  state.currentView = "sources";
-  state.currentCategory = null;
-
-  closeMenu();
-
-  setActiveNavigation({
-    view: "sources"
-  });
-
-  setPageHeader(
+  setHeader(
     "Sources",
-    "The publishers feeding today's briefing."
+    "The feeds powering today's briefing."
   );
 
-  showSincePanel(false);
-  hideContextRail();
+  showSince(false);
 
+  const a=state.data?.sources||[];
 
-  const sources =
-    Array.isArray(state.data?.sources)
-      ? state.data.sources
-      : [];
-
-
-  if (!sources.length) {
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "Source information isn't available.",
-        description:
-          "The briefing data did not include a source-health list.",
-        button: true
-      });
-
-    wireEmptyBackButton();
-
-    return;
+  if(!a.length){
+    return empty(
+      "Source information isn't available.",
+      "The current briefing did not include a source-health list."
+    );
   }
 
-
-  els.contentView.innerHTML = `
+  els.contentView.innerHTML=`
     <section class="content-section">
 
       <div class="view-header">
@@ -2673,56 +1618,46 @@ function renderSources() {
         </div>
 
         <h2>
-          ${sources.filter(source => source.ok).length}
-          of ${sources.length}
+          ${a.filter(x=>x.ok).length}
+          of
+          ${a.length}
           sources healthy
         </h2>
 
         <p>
-          Source health describes feed availability,
-          not an editorial rating of the publisher.
+          Feed availability, not an editorial rating.
         </p>
 
       </div>
 
-
       <div class="category-grid">
 
-        ${sources.map(
-          source => `
+        ${
+          a.map(x=>`
             <div class="category-card">
 
-              <div class="story-topline">
+              <span
+                class="status-dot ${x.ok?"healthy":"unhealthy"}"
+              ></span>
 
-                <span
-                  class="status-dot ${
-                    source.ok
-                      ? "healthy"
-                      : "unhealthy"
-                  }"
-                ></span>
-
-              </div>
-
-              <div class="category-card-name">
-                ${escapeHtml(
-                  source.name ||
-                  source.source ||
-                  "Source"
-                )}
+              <div
+                class="category-card-name"
+                style="margin-top:10px"
+              >
+                ${esc(x.name||x.source||"Source")}
               </div>
 
               <div class="category-card-count">
                 ${
-                  source.ok
-                    ? "Feed healthy"
-                    : "Feed unavailable"
+                  x.ok
+                    ?"Feed healthy"
+                    :"Feed unavailable"
                 }
               </div>
 
             </div>
-          `
-        ).join("")}
+          `).join("")
+        }
 
       </div>
 
@@ -2730,84 +1665,49 @@ function renderSources() {
   `;
 }
 
+async function renderArchives(){
 
-/* ============================================================
-   ARCHIVES
-   ============================================================ */
-
-async function renderArchives() {
-  state.currentView = "archives";
-  state.currentCategory = null;
+  state.currentView="archives";
 
   closeMenu();
 
-  setActiveNavigation({
-    view: "archives"
-  });
+  setActive({view:"archives"});
 
-  setPageHeader(
+  setHeader(
     "Archives",
     "Previous Daily Intelligence briefings."
   );
 
-  showSincePanel(false);
-  hideContextRail();
+  showSince(false);
 
+  els.contentView.innerHTML=
+    '<div class="loading-card">Loading archives…</div>';
 
-  els.contentView.innerHTML = `
-    <div class="loading-card">
-      Loading archives…
-    </div>
-  `;
+  try{
 
-
-  try {
-    const response =
+    const r=
       await fetch(
         `${ARCHIVES_URL}?v=${Date.now()}`,
-        {
-          cache: "no-store"
-        }
+        {cache:"no-store"}
       );
 
+    if(!r.ok)throw 0;
 
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
+    const d=await r.json();
+
+    const a=
+      Array.isArray(d)
+        ?d
+        :(d.archives||d.items||[]);
+
+    if(!a.length){
+      return empty(
+        "No archived briefings yet.",
+        "Previous editions will appear here as the archive grows."
       );
     }
 
-
-    const archiveData =
-      await response.json();
-
-
-    const items =
-      Array.isArray(archiveData)
-        ? archiveData
-        : (
-            archiveData.archives ||
-            archiveData.items ||
-            []
-          );
-
-
-    if (!items.length) {
-      els.contentView.innerHTML =
-        emptyStateHtml({
-          title:
-            "No archived briefings yet.",
-          description:
-            "Previous editions will appear here as the archive grows."
-        });
-
-      wireEmptyBackButton();
-
-      return;
-    }
-
-
-    els.contentView.innerHTML = `
+    els.contentView.innerHTML=`
       <section class="content-section">
 
         <div class="view-header">
@@ -2821,86 +1721,120 @@ async function renderArchives() {
           </h2>
 
           <p>
-            ${items.length}
-            ${
-              items.length === 1
-                ? "edition"
-                : "editions"
-            }
+            ${a.length} editions
           </p>
 
         </div>
 
-
         <div class="category-grid">
 
-          ${items.map(
-            item => `
-              <article class="category-card">
+          ${
+            a.map(x=>`
+              <div class="category-card">
 
                 <div class="category-card-name">
-                  ${escapeHtml(
-                    item.date ||
-                    item.generated_at ||
-                    item.title ||
-                    "Briefing"
-                  )}
+                  ${
+                    esc(
+                      x.date||
+                      x.generated_at||
+                      x.title||
+                      "Briefing"
+                    )
+                  }
                 </div>
 
                 <div class="category-card-count">
                   ${
-                    item.cluster_count ??
-                    item.story_count ??
+                    x.cluster_count??
+                    x.story_count??
                     ""
                   }
-                  ${
-                    (
-                      item.cluster_count ??
-                      item.story_count
-                    ) !== undefined
-                      ? "stories"
-                      : ""
-                  }
+                  stories
                 </div>
 
-              </article>
-            `
-          ).join("")}
+              </div>
+            `).join("")
+          }
 
         </div>
 
       </section>
     `;
 
-  } catch (error) {
-    console.error(
-      "Archive load failed:",
-      error
+  }catch{
+
+    empty(
+      "Archives couldn't load.",
+      "Today's briefing is unaffected."
     );
-
-
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "Archives couldn't load.",
-        description:
-          "Today's briefing is unaffected. Try the archive again later."
-      });
-
-
-    wireEmptyBackButton();
   }
 }
 
+function openSources(s){
 
-/* ============================================================
-   MENU
-   ============================================================ */
+  const a=
+    Array.isArray(s.articles)&&s.articles.length
+      ?s.articles
+      :[
+        {
+          source:publisher(s),
+          title:s.title,
+          url:url(s),
+          published_at:stamp(s)
+        }
+      ];
 
-function openMenu() {
-  document.body.classList.add(
-    "menu-open"
+  els.sheetTitle.textContent=
+    s.title||"Coverage";
+
+  els.sheetSources.innerHTML=
+    a.map(x=>`
+      <a
+        class="sheet-source"
+        href="${esc(x.url||"#")}"
+        target="_blank"
+        rel="noopener"
+      >
+
+        <div class="sheet-source-name">
+          ${esc(x.source||"Source")}
+        </div>
+
+        <div class="sheet-source-title">
+          ${esc(x.title||s.title||"")}
+        </div>
+
+        <div class="sheet-source-time">
+          ${esc(ago(x.published_at))}
+        </div>
+
+      </a>
+    `).join("");
+
+  els.sourceSheet.classList.remove("hidden");
+
+  els.sourceSheet.setAttribute(
+    "aria-hidden",
+    "false"
   );
+
+  document.body.style.overflow="hidden";
+}
+
+function closeSources(){
+
+  els.sourceSheet.classList.add("hidden");
+
+  els.sourceSheet.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  document.body.style.overflow="";
+}
+
+function openMenu(){
+  document.body.classList.add("menu-open");
 
   els.openMenu?.setAttribute(
     "aria-expanded",
@@ -2908,11 +1842,8 @@ function openMenu() {
   );
 }
 
-
-function closeMenu() {
-  document.body.classList.remove(
-    "menu-open"
-  );
+function closeMenu(){
+  document.body.classList.remove("menu-open");
 
   els.openMenu?.setAttribute(
     "aria-expanded",
@@ -2920,519 +1851,421 @@ function closeMenu() {
   );
 }
 
+function applyTheme(){
 
-/* ============================================================
-   THEME
-   ============================================================ */
-
-function applyTheme() {
-  const stored =
-    localStorage.getItem(
-      "di_theme"
-    );
-
-
-  const theme =
-    stored ||
+  const t=
+    localStorage.getItem("di_theme")||
     (
-      window.matchMedia?.(
-        "(prefers-color-scheme: dark)"
-      ).matches
-        ? "dark"
-        : "light"
+      matchMedia("(prefers-color-scheme: dark)").matches
+        ?"dark"
+        :"light"
     );
-
 
   document.documentElement.setAttribute(
     "data-theme",
-    theme
+    t
   );
 }
 
+function toggleTheme(){
 
-function toggleTheme() {
-  const current =
-    document.documentElement.getAttribute(
-      "data-theme"
-    );
-
-
-  const next =
-    current === "dark"
-      ? "light"
-      : "dark";
-
+  const n=
+    document.documentElement.getAttribute("data-theme")==="dark"
+      ?"light"
+      :"dark";
 
   document.documentElement.setAttribute(
     "data-theme",
-    next
+    n
   );
-
 
   localStorage.setItem(
     "di_theme",
-    next
+    n
   );
 }
 
+function openSearch(){
 
-/* ============================================================
-   NAVIGATION
-   ============================================================ */
+  els.searchPanel.classList.remove("hidden");
 
-function navigateFromButton(button) {
-  const category =
-    button.dataset.category;
+  setTimeout(
+    ()=>els.searchInput.focus(),
+    20
+  );
+}
 
-  const view =
-    button.dataset.view;
+function closeSearch(restore=false){
 
+  els.searchPanel.classList.add("hidden");
 
-  if (
-    view === "markets" ||
-    category === "Indian Markets"
-  ) {
-    renderMarkets();
-    return;
-  }
-
-
-  if (category) {
-    showCategory(category);
-    return;
-  }
-
-
-  switch (view) {
-    case "brief":
-      renderBrief();
-      break;
-
-    case "since":
-      renderSince();
-      break;
-
-    case "developing":
-      renderDeveloping();
-      break;
-
-    case "explore":
-      renderExplore();
-      break;
-
-    case "saved":
-      renderSaved();
-      break;
-
-    case "archives":
-      renderArchives();
-      break;
-
-    case "sources":
-      renderSources();
-      break;
-
-    default:
-      renderBrief();
+  if(restore){
+    els.searchInput.value="";
+    renderBrief();
   }
 }
 
+function search(q){
 
-function wireNavigation() {
-  document
-    .querySelectorAll(
-      ".nav-item, .mobile-nav-item, .sidebar-brand, .mobile-brand"
-    )
-    .forEach(button => {
-      button.addEventListener(
-        "click",
-        () => navigateFromButton(button)
-      );
-    });
+  q=q.trim().toLowerCase();
+
+  if(!q){
+    return renderBrief();
+  }
+
+  state.currentView="search";
+
+  setActive();
+
+  setHeader(
+    "Search",
+    `Results for “${q}”.`
+  );
+
+  showSince(false);
+
+  const a=
+    sort(
+      state.clusters.filter(s=>
+        [
+          s.title,
+          s.description,
+          s.brief,
+          s.category,
+          s.market_impact,
+          ...(s.sources||[])
+        ]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+      )
+    );
+
+  if(!a.length){
+    return empty(
+      `No results for “${q}”.`,
+      "Try a broader topic, company, person or country."
+    );
+  }
+
+  els.contentView.innerHTML=`
+    <section class="content-section">
+
+      <div class="view-header">
+
+        <div class="section-kicker">
+          SEARCH
+        </div>
+
+        <h2>
+          Results for “${esc(q)}”
+        </h2>
+
+        <p>
+          ${a.length} results
+        </p>
+
+      </div>
+
+      <div class="story-list">
+        ${a.map(s=>storyMarkup(s)).join("")}
+      </div>
+
+    </section>
+  `;
+
+  wireStoryActions();
 }
 
+function navigate(b){
 
-/* ============================================================
-   CURRENT VIEW
-   ============================================================ */
+  const c=b.dataset.category;
+  const v=b.dataset.view;
 
-function renderCurrentView() {
-  switch (state.currentView) {
-    case "markets":
-      return renderMarkets();
+  if(c){
+    return showCategory(c);
+  }
 
-    case "category":
-      return showCategory(
+  (
+    {
+      brief:renderBrief,
+      since:renderSince,
+      developing:renderDeveloping,
+      markets:renderMarkets,
+      explore:renderExplore,
+      saved:renderSaved,
+      archives:renderArchives,
+      sources:renderSources
+    }[v]||
+    renderBrief
+  )();
+}
+
+function renderCurrent(){
+
+  (
+    {
+      brief:renderBrief,
+      since:renderSince,
+      developing:renderDeveloping,
+      markets:renderMarkets,
+      explore:renderExplore,
+      saved:renderSaved,
+      sources:renderSources,
+      archives:renderArchives,
+      category:()=>showCategory(
         state.currentCategory
-      );
-
-    case "since":
-      return renderSince();
-
-    case "developing":
-      return renderDeveloping();
-
-    case "explore":
-      return renderExplore();
-
-    case "saved":
-      return renderSaved();
-
-    case "sources":
-      return renderSources();
-
-    case "archives":
-      return renderArchives();
-
-    case "search":
-      return searchStories(
-        els.searchInput?.value || ""
-      );
-
-    default:
-      return renderBrief();
-  }
+      ),
+      search:()=>search(
+        els.searchInput.value
+      )
+    }[state.currentView]||
+    renderBrief
+  )();
 }
 
+function health(d){
 
-/* ============================================================
-   SOURCE HEALTH
-   ============================================================ */
+  const a=d.sources||[];
 
-function updateSourceHealth(data) {
-  const sources =
-    Array.isArray(data.sources)
-      ? data.sources
-      : [];
+  const h=
+    a.filter(x=>x.ok).length;
 
+  const r=
+    a.length
+      ?h/a.length
+      :0;
 
-  const healthy =
-    sources.filter(
-      source => source.ok
-    ).length;
+  const c=
+    r>=.85
+      ?"healthy"
+      :r>=.6
+        ?"partial"
+        :"unhealthy";
 
-
-  if (els.sidebarStatus) {
-    els.sidebarStatus.textContent =
-      sources.length
-        ? `${healthy}/${sources.length} sources healthy`
-        : "Source health unavailable";
-  }
-
-
-  const ratio =
-    sources.length
-      ? healthy / sources.length
-      : 0;
-
-
-  const healthClass =
-    ratio >= 0.85
-      ? "healthy"
-      : ratio >= 0.6
-        ? "partial"
-        : "unhealthy";
-
+  els.sidebarStatus.textContent=
+    a.length
+      ?`${h}/${a.length} sources healthy`
+      :"Source health unavailable";
 
   [
     els.sidebarHealthDot,
     els.healthDot
-  ].forEach(dot => {
-    if (!dot) return;
+  ].forEach(x=>{
 
-    dot.classList.remove(
+    x?.classList.remove(
       "healthy",
       "partial",
       "unhealthy"
     );
 
-    dot.classList.add(
-      healthClass
-    );
+    x?.classList.add(c);
   });
 }
 
+function updateSince(){
 
-/* ============================================================
-   SINCE SUMMARY
-   ============================================================ */
+  if(!state.previousVisit){
 
-function updateSinceSummary() {
-  if (!els.sinceSummary) {
-    return;
-  }
-
-
-  if (!state.previousVisit) {
-    els.sinceSummary.textContent =
+    els.sinceSummary.textContent=
       "Your catch-up will begin on your next visit.";
 
     return;
   }
 
+  const a=
+    state.clusters.filter(fresh);
 
-  const fresh =
-    getFreshStories();
-
-
-  const catchup =
-    getCatchupStories();
-
-
-  if (!fresh.length) {
-    els.sinceSummary.textContent =
-      "You're caught up. No significant new developments.";
-
-    return;
-  }
-
-
-  els.sinceSummary.textContent =
-    `${catchup.length} ${
-      catchup.length === 1
-        ? "development"
-        : "developments"
-    } worth catching up on`;
+  els.sinceSummary.textContent=
+    a.length
+      ?`${Math.min(a.length,12)} developments worth catching up on`
+      :"You're caught up. No significant new developments.";
 }
 
+async function load(){
 
-/* ============================================================
-   LOAD DATA
-   ============================================================ */
+  try{
 
-async function loadData() {
-  try {
-    const response =
+    const r=
       await fetch(
         `${DATA_URL}?v=${Date.now()}`,
+        {cache:"no-store"}
+      );
+
+    if(!r.ok){
+      throw Error(r.status);
+    }
+
+    const d=await r.json();
+
+    state.data=d;
+
+    state.clusters=
+      Array.isArray(d.clusters)
+        ?d.clusters
+        :[];
+
+    state.top=
+      Array.isArray(d.top)
+        ?d.top
+        :[];
+
+    state.markets=
+      d.markets||{};
+
+    els.todayDate.textContent=
+      new Intl.DateTimeFormat(
+        "en-IN",
         {
-          cache: "no-store"
+          weekday:"long",
+          day:"numeric",
+          month:"long"
         }
-      );
+      )
+      .format(new Date())
+      .toUpperCase();
 
+    els.topbarDate.textContent=
+      new Intl.DateTimeFormat(
+        "en-IN",
+        {
+          day:"numeric",
+          month:"short",
+          year:"numeric"
+        }
+      )
+      .format(new Date());
 
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
-      );
-    }
+    const u=
+      `Updated ${ago(d.generated_at)}`;
 
+    els.lastUpdated.textContent=u;
+    els.topbarUpdated.textContent=u;
 
-    const data =
-      await response.json();
-
-
-    state.data = data;
-
-
-    state.clusters =
-      Array.isArray(data.clusters)
-        ? data.clusters
-        : [];
-
-
-    state.top =
-      Array.isArray(data.top)
-        ? data.top
-        : [];
-
-
-    state.markets =
-      data.markets || {};
-
-
-    const today =
-      formatToday();
-
-
-    if (els.todayDate) {
-      els.todayDate.textContent =
-        today;
-    }
-
-
-    if (els.topbarDate) {
-      els.topbarDate.textContent =
-        formatCompactDate();
-    }
-
-
-    const updated =
-      `Updated ${
-        timeAgo(data.generated_at)
-      }`;
-
-
-    if (els.lastUpdated) {
-      els.lastUpdated.textContent =
-        updated;
-    }
-
-
-    if (els.topbarUpdated) {
-      els.topbarUpdated.textContent =
-        updated;
-    }
-
-
-    updateSourceHealth(data);
-    updateSinceSummary();
-
-
+    health(d);
+    updateSince();
+    renderRail();
     renderBrief();
-
-
-    /*
-      Record this visit only after the previous visit
-      has already been used to build the catch-up state.
-    */
 
     localStorage.setItem(
       "di_last_visit",
       state.currentVisit
     );
 
-  } catch (error) {
-    console.error(
-      "Daily Intelligence load failed:",
-      error
-    );
+  }catch(e){
 
+    console.error(e);
 
-    setPageHeader(
+    setHeader(
       "Daily Intelligence",
       "The briefing is temporarily unavailable."
     );
 
+    showSince(false);
 
-    showSincePanel(false);
-
-
-    els.contentView.innerHTML =
-      emptyStateHtml({
-        title:
-          "The briefing couldn't load.",
-        description:
-          "Refresh again in a moment.",
-        button: false
-      });
+    empty(
+      "The briefing couldn't load.",
+      "Refresh again in a moment."
+    );
   }
 }
 
-
-/* ============================================================
-   EVENTS
-   ============================================================ */
-
 applyTheme();
 
-wireNavigation();
-
+document
+  .querySelectorAll(
+    ".nav-item,.mobile-nav-item,.brand-button"
+  )
+  .forEach(
+    b=>b.addEventListener(
+      "click",
+      ()=>navigate(b)
+    )
+  );
 
 els.openMenu?.addEventListener(
   "click",
   openMenu
 );
 
-
 els.closeMenu?.addEventListener(
   "click",
   closeMenu
 );
-
 
 els.menuOverlay?.addEventListener(
   "click",
   closeMenu
 );
 
-
 els.themeButton?.addEventListener(
   "click",
   toggleTheme
 );
-
 
 els.sidebarThemeButton?.addEventListener(
   "click",
   toggleTheme
 );
 
-
 els.viewSinceButton?.addEventListener(
   "click",
   renderSince
 );
-
 
 els.contextSinceButton?.addEventListener(
   "click",
   renderSince
 );
 
-
 els.searchButton?.addEventListener(
   "click",
-  openSearchPanel
+  openSearch
 );
-
 
 els.desktopSearchTrigger?.addEventListener(
   "click",
-  openSearchPanel
+  openSearch
 );
-
 
 els.closeSearch?.addEventListener(
   "click",
-  () => closeSearchPanel(true)
+  ()=>closeSearch(true)
 );
-
 
 els.searchInput?.addEventListener(
   "input",
-  event => {
-    searchStories(
-      event.target.value
-    );
-  }
+  e=>search(e.target.value)
 );
-
 
 els.sheetBackdrop?.addEventListener(
   "click",
   closeSources
 );
 
-
 els.closeSheet?.addEventListener(
   "click",
   closeSources
 );
 
-
 document.addEventListener(
   "keydown",
-  event => {
-    if (event.key === "Escape") {
+  e=>{
+
+    if(
+      (e.metaKey||e.ctrlKey)&&
+      e.key.toLowerCase()==="k"
+    ){
+      e.preventDefault();
+      openSearch();
+    }
+
+    if(e.key==="Escape"){
       closeMenu();
       closeSources();
-
-      if (
-        els.searchPanel &&
-        !els.searchPanel.classList.contains(
-          "hidden"
-        )
-      ) {
-        closeSearchPanel(false);
-      }
+      closeSearch(false);
     }
   }
 );
 
-
-/* ============================================================
-   START
-   ============================================================ */
-
-loadData();
+load();
