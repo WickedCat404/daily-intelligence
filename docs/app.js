@@ -1,54 +1,43 @@
 (() => {
   'use strict';
 
-  const $ = (s, root = document) => root.querySelector(s);
-  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
   const esc = (v = '') =>
-    String(v).replace(/[&<>'"]/g, c => ({
+    String(v).replace(/[&<>"']/g, c => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
+      '"': '&quot;',
+      "'": '&#39;'
     }[c]));
 
-  const state = {
-    data: null,
+  const A = v => Array.isArray(v) ? v : [];
+
+  const F = (...v) =>
+    v.find(x => x !== undefined && x !== null && x !== '');
+
+  const S = {
+    data: {},
     clusters: [],
     brief: [],
     view: 'brief',
     category: null,
-    query: '',
     saved: new Set(
       JSON.parse(localStorage.getItem('di:saved') || '[]')
     ),
-    lastVisit: localStorage.getItem('di:lastVisit') || null
+    lastVisit: localStorage.getItem('di:lastVisit')
   };
 
-  const categoryNames = {
+  const catMap = {
     'Macro Economics': 'Economy & Policy',
     'Business & Micro': 'Business'
   };
 
-  function arr(v) {
-    return Array.isArray(v) ? v : [];
-  }
-
-  function num(v, fallback = 0) {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-  function first(...values) {
-    return values.find(
-      v => v !== undefined && v !== null && v !== ''
-    );
-  }
-
-  function keyOf(c) {
-    return String(
-      first(
+  const key = c =>
+    String(
+      F(
         c.cluster_key,
         c.id,
         c.primary?.url,
@@ -57,161 +46,152 @@
         ''
       )
     );
-  }
 
-  function sourceOf(c) {
-    return first(
-      c.primary?.source,
-      c.primary_source,
-      arr(c.sources)[0]?.source,
-      arr(c.sources)[0]?.name,
-      arr(c.sources)[0],
-      'Unknown source'
-    );
-  }
-
-  function urlOf(c) {
-    return first(
-      c.primary?.url,
-      c.url,
-      arr(c.articles)[0]?.url,
-      '#'
-    );
-  }
-
-  function textOf(c) {
-    return first(
-      c.brief,
-      c.description,
-      c.primary?.description,
-      arr(c.articles)[0]?.description,
-      ''
-    );
-  }
-
-  function labelOf(c) {
-    const raw = String(
-      first(c.importance_label, '')
-    ).toLowerCase();
-
-    if (raw.includes('critical')) {
-      return 'Critical';
-    }
-
-    if (raw.includes('significant')) {
-      return 'Significant';
-    }
-
-    if (raw.includes('noteworthy')) {
-      return 'Noteworthy';
-    }
-
-    const score = num(
-      c.importance,
-      num(c.signal_score, 0)
-    );
-
-    if (score >= 70) {
-      return 'Critical';
-    }
-
-    if (score >= 43) {
-      return 'Significant';
-    }
-
-    return 'Noteworthy';
-  }
-
-  function scoreOf(c) {
-    return num(
-      c.importance,
-      num(
+  const score = c =>
+    Number(
+      F(
+        c.importance,
         c.signal_score,
-        num(c.primary?.signal_score, 0)
+        c.primary?.signal_score,
+        0
       )
-    );
-  }
+    ) || 0;
 
-  function dateOf(c) {
-    return first(
-      c.published_at,
-      c.primary?.published_at,
-      arr(c.articles)[0]?.published_at
-    );
-  }
-
-  function categoryOf(c) {
-    return first(
+  const category = c =>
+    F(
       c.category,
       c.primary?.category,
       c.primary?.base_category,
       'General'
     );
-  }
 
-  function displayCategory(c) {
-    return categoryNames[categoryOf(c)] || categoryOf(c);
-  }
+  const displayCat = c =>
+    catMap[category(c)] || category(c);
 
-  /*
-   * latest.json has changed shape during development.
-   * This deliberately looks for the known story arrays
-   * rather than assuming one exact top-level property.
-   */
-  function findClusterArray(data) {
-    const candidates = [
-      data.clusters,
-      data.events,
-      data.items,
-      data.stories,
-      data.developments,
-      data.news
-    ];
+  const desc = c =>
+    F(
+      c.brief,
+      c.description,
+      c.primary?.description,
+      A(c.articles)[0]?.description,
+      ''
+    );
 
-    for (const candidate of candidates) {
-      if (
-        Array.isArray(candidate) &&
-        candidate.length
-      ) {
-        return candidate;
-      }
+  const url = c =>
+    F(
+      c.primary?.url,
+      c.url,
+      A(c.articles)[0]?.url,
+      '#'
+    );
+
+  const source = c =>
+    F(
+      c.primary?.source,
+      c.primary_source,
+      A(c.sources)[0]?.source,
+      A(c.sources)[0]?.name,
+      typeof A(c.sources)[0] === 'string'
+        ? A(c.sources)[0]
+        : null,
+      A(c.articles)[0]?.source,
+      'Source'
+    );
+
+  const date = c =>
+    F(
+      c.published_at,
+      c.primary?.published_at,
+      A(c.articles)[0]?.published_at
+    );
+
+  const label = c => {
+    const x = String(
+      F(c.importance_label, '')
+    ).toLowerCase();
+
+    if (x.includes('critical')) return 'Critical';
+    if (x.includes('significant')) return 'Significant';
+    if (x.includes('noteworthy')) return 'Noteworthy';
+
+    return score(c) >= 70
+      ? 'Critical'
+      : score(c) >= 43
+        ? 'Significant'
+        : 'Noteworthy';
+  };
+
+  const ago = v => {
+    if (!v) return '';
+
+    const d = new Date(v);
+
+    if (Number.isNaN(d.getTime())) return '';
+
+    const m = Math.max(
+      1,
+      Math.floor((Date.now() - d.getTime()) / 60000)
+    );
+
+    if (m < 60) return `${m}m ago`;
+    if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+
+    return `${Math.floor(m / 1440)}d ago`;
+  };
+
+  const count = c =>
+    Number(c.source_count) ||
+    A(c.sources).length ||
+    A(c.articles).length ||
+    1;
+
+  function clustersOf(d) {
+    for (const k of [
+      'clusters',
+      'events',
+      'items',
+      'stories',
+      'developments',
+      'news'
+    ]) {
+      if (A(d[k]).length) return d[k];
     }
 
-    for (const value of Object.values(data || {})) {
+    for (const v of Object.values(d || {})) {
       if (
-        Array.isArray(value) &&
-        value.length &&
-        typeof value[0] === 'object' &&
+        A(v).length &&
+        typeof v[0] === 'object' &&
         (
-          'title' in value[0] ||
-          'cluster_key' in value[0]
+          'title' in v[0] ||
+          'cluster_key' in v[0]
         )
       ) {
-        return value;
+        return v;
       }
     }
 
     return [];
   }
 
-  function resolveBrief(data, clusters) {
-    const raw = first(
-      data.brief,
-      data.daily_brief,
-      data.top_stories,
-      data.must_know
-    );
+  function briefOf(d, cs) {
+    for (const k of [
+      'brief',
+      'daily_brief',
+      'top_stories',
+      'must_know'
+    ]) {
+      const b = d[k];
 
-    if (Array.isArray(raw) && raw.length) {
-      if (typeof raw[0] === 'object') {
-        return raw;
+      if (!A(b).length) continue;
+
+      if (typeof b[0] === 'object') {
+        return b;
       }
 
-      const ids = new Set(raw.map(String));
+      const ids = new Set(b.map(String));
 
-      const matched = clusters.filter(c =>
-        ids.has(keyOf(c)) ||
-        ids.has(String(c.cluster_key))
+      const matched = cs.filter(c =>
+        ids.has(key(c))
       );
 
       if (matched.length) {
@@ -219,1088 +199,816 @@
       }
     }
 
-    return [...clusters]
-      .sort((a, b) => scoreOf(b) - scoreOf(a))
-      .slice(0, Math.min(8, clusters.length));
+    return [...cs]
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 8);
   }
 
-  function formatDate(value, opts = {}) {
-    if (!value) {
-      return '';
+  function visualClass(c) {
+    const t =
+      `${displayCat(c)} ${c.title || ''}`.toLowerCase();
+
+    if (
+      /market|econom|business|rbi|bank|stock|ipo/.test(t)
+    ) {
+      return 'market';
     }
 
-    const d = new Date(value);
-
-    if (Number.isNaN(d.getTime())) {
-      return '';
+    if (
+      /ai|tech|compute|chip|digital/.test(t)
+    ) {
+      return 'tech';
     }
 
-    return new Intl.DateTimeFormat(
-      'en-IN',
-      opts
-    ).format(d);
-  }
-
-  function timeAgo(value) {
-    if (!value) {
-      return '';
+    if (
+      /world|geo|war|china|russia|united states|us /.test(t)
+    ) {
+      return 'world';
     }
 
-    const d = new Date(value);
-
-    if (Number.isNaN(d.getTime())) {
-      return '';
+    if (
+      /science|climate|space|research/.test(t)
+    ) {
+      return 'science';
     }
 
-    const mins = Math.max(
-      0,
-      Math.floor(
-        (Date.now() - d.getTime()) / 60000
-      )
-    );
-
-    if (mins < 60) {
-      return `${Math.max(1, mins)}m ago`;
-    }
-
-    const hrs = Math.floor(mins / 60);
-
-    if (hrs < 24) {
-      return `${hrs}h ago`;
-    }
-
-    const days = Math.floor(hrs / 24);
-
-    return days === 1
-      ? '1d ago'
-      : `${days}d ago`;
-  }
-
-  function sourceCount(c) {
-    const n = num(
-      c.source_count,
-      arr(c.sources).length ||
-      arr(c.articles).length ||
-      1
-    );
-
-    return `${n} source${n === 1 ? '' : 's'}`;
+    return 'india';
   }
 
   function meta(c) {
-    return [
-      sourceOf(c),
-      timeAgo(dateOf(c)),
-      sourceCount(c)
-    ]
-      .filter(Boolean)
-      .map(esc)
-      .join(' · ');
+    const n = count(c);
+
+    return `${esc(source(c))} · ${esc(ago(date(c)))} · ${n} source${n === 1 ? '' : 's'}`;
   }
 
-  function setText(id, value) {
-    const el = document.getElementById(id);
-
-    if (el) {
-      el.textContent = value;
-    }
-  }
-
-  function show(el, yes = true) {
-    if (el) {
-      el.hidden = !yes;
-    }
-  }
-
-  function setHeader(
-    title,
-    description,
-    eyebrow = ''
-  ) {
-    setText('pageTitle', title);
-    setText('pageDescription', description);
-    setText('todayDate', eyebrow || '');
-  }
-
-  function setActive(view, category = null) {
-    $$('.nav-item, .brand-button, .mobile-nav-item')
-      .forEach(el => {
-        const active = category
-          ? el.dataset.category === category
-          : el.dataset.view === view;
-
-        el.classList.toggle('active', active);
-      });
-  }
-
-  function saveState() {
-    localStorage.setItem(
-      'di:saved',
-      JSON.stringify([...state.saved])
-    );
-  }
-
-  function storyCard(
-    c,
-    variant = 'story-card'
-  ) {
-    const key = keyOf(c);
-    const saved = state.saved.has(key);
+  function saveBtn(c) {
+    const k = key(c);
+    const on = S.saved.has(k);
 
     return `
-      <article
-        class="${variant}"
-        data-story-key="${esc(key)}"
+      <button
+        class="bookmark ${on ? 'saved' : ''}"
+        data-save="${esc(k)}"
+        aria-label="Save story"
       >
-        <div class="story-topline">
-          <span
-            class="importance importance-${labelOf(c).toLowerCase()}"
-          >
-            ${esc(labelOf(c))}
-          </span>
+        ${on ? '★' : '☆'}
+      </button>
+    `;
+  }
 
-          <span>
-            ${esc(displayCategory(c))}
-          </span>
+  function visual(c, small = false) {
+    return `
+      <div
+        class="editorial-visual ${visualClass(c)} ${small ? 'small' : ''}"
+        aria-hidden="true"
+      >
+        <span>${esc(displayCat(c))}</span>
+        <i></i>
+        <b>DI</b>
+      </div>
+    `;
+  }
+
+  function storyLink(c) {
+    return `
+      <a
+        href="${esc(url(c))}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        ${esc(c.title || 'Untitled')}
+      </a>
+    `;
+  }
+
+  function storyLabel(c) {
+    return `
+      <div class="story-label">
+        <span class="dot ${label(c).toLowerCase()}"></span>
+        ${esc(label(c))}
+        <em>${esc(displayCat(c))}</em>
+      </div>
+    `;
+  }
+
+  function lead(c) {
+    return `
+      <article class="lead-card">
+        ${visual(c)}
+
+        <div class="lead-copy">
+          ${storyLabel(c)}
+
+          <h2>${storyLink(c)}</h2>
+
+          ${
+            desc(c)
+              ? `<p>${esc(desc(c))}</p>`
+              : ''
+          }
+
+          <div class="meta">
+            ${meta(c)}
+            ${saveBtn(c)}
+          </div>
         </div>
-
-        <h2 class="story-title">
-          <a
-            href="${esc(urlOf(c))}"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            ${esc(c.title || 'Untitled')}
-          </a>
-        </h2>
-
-        ${
-          textOf(c)
-            ? `
-              <p class="story-summary">
-                ${esc(textOf(c))}
-              </p>
-            `
-            : ''
-        }
-
-        <div class="story-meta">
-          <span>${meta(c)}</span>
-
-          <button
-            class="save-button"
-            data-save="${esc(key)}"
-            aria-label="${
-              saved
-                ? 'Remove from saved'
-                : 'Save story'
-            }"
-          >
-            ${saved ? '★' : '☆'}
-          </button>
-        </div>
-
-        ${
-          arr(c.sources).length > 1
-            ? `
-              <button
-                class="sources-button"
-                data-sources="${esc(key)}"
-              >
-                View sources
-              </button>
-            `
-            : ''
-        }
       </article>
     `;
   }
 
-  function emptyState(title, body) {
+  function secondary(c) {
     return `
-      <div class="empty-state">
-        <h2>${esc(title)}</h2>
-        <p>${esc(body)}</p>
+      <article class="secondary-card">
+        <div class="secondary-copy">
+          ${storyLabel(c)}
 
-        <button
-          class="quiet-button"
-          data-go-brief
-        >
-          Back to The Brief
-        </button>
+          <h3>${storyLink(c)}</h3>
+
+          <div class="meta">
+            ${meta(c)}
+            ${saveBtn(c)}
+          </div>
+        </div>
+
+        ${visual(c, true)}
+      </article>
+    `;
+  }
+
+  function signal(c) {
+    return `
+      <article class="signal-row">
+        <div>
+          ${storyLabel(c)}
+
+          <h3>${storyLink(c)}</h3>
+
+          ${
+            desc(c)
+              ? `<p>${esc(desc(c))}</p>`
+              : ''
+          }
+
+          <div class="meta">${meta(c)}</div>
+        </div>
+
+        ${saveBtn(c)}
+      </article>
+    `;
+  }
+
+  function setHeader(eyebrow, title, sub) {
+    $('#eyebrow').textContent = eyebrow;
+    $('#pageTitle').textContent = title;
+    $('#pageDescription').textContent = sub;
+  }
+
+  function active(view, cat) {
+    $$('[data-view], [data-category]').forEach(x => {
+      x.classList.toggle(
+        'active',
+        cat
+          ? x.dataset.category === cat
+          : x.dataset.view === view
+      );
+    });
+  }
+
+  function sincePanel() {
+    const cut = S.lastVisit
+      ? new Date(S.lastVisit).getTime()
+      : Date.now() - 86400000;
+
+    const n = S.clusters.filter(c =>
+      new Date(date(c)).getTime() > cut
+    ).length;
+
+    $('#sinceSummary').textContent =
+      `${n} new developments since your last check`;
+  }
+
+  function rail() {
+    const dev = S.clusters.filter(c =>
+      c.is_developing === true ||
+      String(c.is_developing) === 'true'
+    ).length;
+
+    const articles =
+      Number(S.data.article_count) ||
+      S.clusters.reduce(
+        (n, c) =>
+          n + Math.max(1, A(c.articles).length),
+        0
+      );
+
+    const events =
+      Number(S.data.cluster_count) ||
+      S.clusters.length;
+
+    $('#contextRail').innerHTML = `
+      <section class="rail-card">
+        <h3>Today at a glance</h3>
+
+        <div class="rail-stat">
+          <b>${S.brief.length}</b>
+          <span>in today's brief</span>
+        </div>
+
+        <div class="rail-stat">
+          <b>${dev}</b>
+          <span>developing stories</span>
+        </div>
+
+        <div class="rail-stat">
+          <b>${articles}</b>
+          <span>articles scanned</span>
+        </div>
+
+        <div class="rail-stat">
+          <b>${events}</b>
+          <span>events clustered</span>
+        </div>
+      </section>
+
+      <section class="rail-card explore">
+        <h3>Explore by topic →</h3>
+
+        <button data-category="India">India</button>
+        <button data-view="markets">Markets</button>
+        <button data-category="AI">AI</button>
+        <button data-category="Macro Economics">Economy</button>
+        <button data-category="Geopolitics">Geopolitics</button>
+        <button data-category="Technology">Technology</button>
+        <button data-category="Science & Climate">Climate</button>
+      </section>
+
+      <div class="rail-note">
+        ❧
+        <span>
+          Less noise.<br>
+          A more informed you.
+        </span>
       </div>
     `;
   }
 
   function renderBrief() {
-    state.view = 'brief';
-    state.category = null;
+    S.view = 'brief';
+    S.category = null;
+
+    active('brief');
 
     setHeader(
-      'The Brief',
-      'What matters today, without the noise.',
-      'TODAY'
+      "TODAY'S BRIEF",
+      `${Math.min(S.brief.length, 8)} developments worth your attention`,
+      "A focused view on what's important in India, the world and beyond."
     );
 
-    show($('#sinceLastPanel'), true);
-    show($('#contextRail'), true);
+    $('#sincePanel').hidden = false;
+    $('#contextRail').hidden = false;
 
-    setActive('brief');
+    const b = S.brief.slice(0, 8);
 
-    const items = state.brief;
+    if (!b.length) {
+      $('#contentView').innerHTML = `
+        <div class="empty">
+          <h2>No brief yet</h2>
+          <p>
+            No stories met the current signal threshold.
+          </p>
+        </div>
+      `;
 
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="brief-list">
-            ${
-              items.map(
-                (c, i) =>
-                  storyCard(
-                    c,
-                    i === 0
-                      ? 'lead-story'
-                      : 'story-card'
-                  )
-              ).join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'No brief available yet',
-            'The updater did not return any brief items.'
-          );
+      rail();
+      return;
+    }
 
-    renderRail();
+    $('#contentView').innerHTML = `
+      <div class="brief-editorial">
+
+        ${lead(b[0])}
+
+        ${
+          b.length > 1
+            ? `
+              <h2 class="subsection-title">
+                Other important developments
+              </h2>
+
+              <div class="secondary-grid">
+                ${b.slice(1, 5).map(secondary).join('')}
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          b.length > 5
+            ? `
+              <div class="signals-head">
+                <span>●</span>
+                TODAY'S SIGNALS
+              </div>
+
+              <div class="signal-list">
+                ${b.slice(5).map(signal).join('')}
+              </div>
+            `
+            : ''
+        }
+
+      </div>
+    `;
+
+    rail();
   }
 
-  function renderCategory(category) {
-    state.view = 'category';
-    state.category = category;
+  function categoryItems(cat) {
+    const display = catMap[cat] || cat;
 
-    const label =
-      categoryNames[category] || category;
-
-    const items = state.clusters
+    return S.clusters
       .filter(c =>
-        categoryOf(c) === category ||
-        displayCategory(c) === label
+        category(c) === cat ||
+        displayCat(c) === display
       )
-      .sort(
-        (a, b) =>
-          scoreOf(b) - scoreOf(a)
-      );
-
-    setHeader(
-      label,
-      `Significant developments in ${label}.`,
-      `${label.toUpperCase()} / TODAY / ${items.length} DEVELOPMENTS`
-    );
-
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), true);
-
-    setActive(null, category);
-
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="category-list">
-            ${
-              items
-                .slice(0, 40)
-                .map(
-                  (c, i) =>
-                    storyCard(
-                      c,
-                      i === 0
-                        ? 'lead-story'
-                        : 'story-card'
-                    )
-                )
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            `No significant ${label} developments`,
-            'Nothing currently meets the signal threshold for this section.'
-          );
-
-    renderRail(items);
+      .sort((a, b) => score(b) - score(a));
   }
 
-  function renderSince() {
-    state.view = 'since';
-    state.category = null;
+  function renderCategory(cat) {
+    S.view = 'category';
+    S.category = cat;
 
-    setActive('since');
+    active(null, cat);
 
-    setHeader(
-      'Since Last Check',
-      'Developments published since your previous visit.',
-      'TODAY'
-    );
-
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), true);
-
-    const cutoff = state.lastVisit
-      ? new Date(state.lastVisit).getTime()
-      : Date.now() - 24 * 3600 * 1000;
-
-    const items = state.clusters
-      .filter(c => {
-        const t = new Date(
-          dateOf(c)
-        ).getTime();
-
-        return (
-          Number.isFinite(t) &&
-          t > cutoff
-        );
-      })
-      .sort(
-        (a, b) =>
-          new Date(dateOf(b)) -
-          new Date(dateOf(a))
-      );
-
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="story-list">
-            ${
-              items
-                .slice(0, 50)
-                .map(c => storyCard(c))
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'You are caught up',
-            'No significant developments have appeared since your last check.'
-          );
-
-    renderRail(items);
-  }
-
-  function renderDeveloping() {
-    state.view = 'developing';
-    state.category = null;
-
-    setActive('developing');
+    const display = catMap[cat] || cat;
+    const items = categoryItems(cat);
 
     setHeader(
-      'Developing',
-      'Events that are still moving.',
-      'LIVE'
+      `${display.toUpperCase()} / TODAY / ${items.length} DEVELOPMENTS`,
+      display,
+      `Key ${display.toLowerCase()} developments that matter.`
     );
 
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), true);
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = false;
 
-    const items = state.clusters
-      .filter(c =>
-        c.is_developing === true ||
-        String(
-          c.is_developing
-        ).toLowerCase() === 'true'
-      )
-      .sort(
-        (a, b) =>
-          new Date(dateOf(b)) -
-          new Date(dateOf(a))
-      );
+    if (!items.length) {
+      $('#contentView').innerHTML = `
+        <div class="empty category-empty">
+          <div class="empty-icon">⌂</div>
 
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="story-list">
-            ${
-              items
-                .map(c => storyCard(c))
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'No developing stories right now',
-            'We are continuously scanning trusted sources.'
-          );
+          <h2>
+            No significant developments<br>
+            since your last briefing.
+          </h2>
 
-    renderRail(items);
+          <p>
+            We're continuously scanning trusted sources.<br>
+            If something important happens, it will appear here.
+          </p>
+
+          <button data-view="brief">
+            Back to The Brief
+          </button>
+        </div>
+      `;
+
+      rail();
+      return;
+    }
+
+    $('#contentView').innerHTML = `
+      <div class="category-editorial">
+
+        ${lead(items[0])}
+
+        ${
+          items.length > 1
+            ? `
+              <div class="secondary-grid category-secondary">
+                ${items.slice(1, 3).map(secondary).join('')}
+              </div>
+            `
+            : ''
+        }
+
+        ${
+          items.length > 3
+            ? `
+              <div class="signals-head">
+                SIGNAL STREAM
+              </div>
+
+              <div class="signal-list">
+                ${items.slice(3, 30).map(signal).join('')}
+              </div>
+            `
+            : ''
+        }
+
+      </div>
+    `;
+
+    rail();
   }
 
   function isMarket(c) {
-    const hay = `
-      ${categoryOf(c)}
-      ${c.title || ''}
-      ${textOf(c)}
-      ${arr(c.market_channels).join(' ')}
-    `.toLowerCase();
+    const text =
+      `${category(c)} ${c.title || ''} ${desc(c)} ${A(c.market_channels).join(' ')}`
+        .toLowerCase();
 
     return (
-      /market|nifty|sensex|sebi|rbi|ipo|stock|equity|mutual fund|fii|dii|rupee|bond|yield|crude|opec|fed|dollar|banking/.test(hay) ||
+      /market|nifty|sensex|sebi|rbi|ipo|stock|equity|mutual fund|fii|dii|rupee|bond|yield|crude|opec|fed|dollar|bank/.test(text) ||
       Boolean(c.market_impact)
     );
   }
 
   function renderMarkets() {
-    state.view = 'markets';
-    state.category = null;
+    S.view = 'markets';
+    S.category = null;
 
-    setActive('markets');
+    active('markets');
 
     setHeader(
+      'MARKETS',
       'Markets',
-      'What is moving Indian markets — and why.',
-      'MARKETS'
+      'Key developments moving Indian markets.'
     );
 
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), true);
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
 
-    const items = state.clusters
+    const items = S.clusters
       .filter(isMarket)
+      .sort((a, b) => score(b) - score(a));
+
+    const india = items.filter(c =>
+      !/fed|china|opec|dollar|treasury|global|united states|us /.test(
+        `${c.title || ''} ${desc(c)}`.toLowerCase()
+      )
+    );
+
+    const global = items.filter(c =>
+      !india.includes(c)
+    );
+
+    const ipo = items.filter(c =>
+      /\bipo\b|initial public offering/.test(
+        `${c.title || ''} ${desc(c)}`.toLowerCase()
+      )
+    );
+
+    const companies = items.filter(c =>
+      /company|companies|earnings|acquisition|merger|buyback|order|stock|shares/.test(
+        `${c.title || ''} ${desc(c)}`.toLowerCase()
+      )
+    );
+
+    const funds = items.filter(c =>
+      /mutual fund|amfi|\bsip\b/.test(
+        `${c.title || ''} ${desc(c)}`.toLowerCase()
+      )
+    );
+
+    $('#contentView').innerHTML = `
+      <div class="markets-page">
+
+        <nav class="market-tabs">
+          <b>Overview</b>
+          <span>India Today</span>
+          <span>Global → India</span>
+          <span>IPOs</span>
+          <span>Stocks & Companies</span>
+          <span>Mutual Funds</span>
+        </nav>
+
+        ${
+          items[0]
+            ? lead(items[0])
+            : `
+              <div class="empty">
+                <h2>No major market developments.</h2>
+              </div>
+            `
+        }
+
+        <div class="market-columns">
+
+          <section>
+            <h2>India Today</h2>
+
+            ${india.slice(1, 5).map(c => `
+              <div class="market-line">
+                <h3>${storyLink(c)}</h3>
+                <div class="meta">${meta(c)}</div>
+              </div>
+            `).join('')}
+          </section>
+
+          <section>
+            <h2>Global → India</h2>
+
+            ${global.slice(0, 4).map(c => `
+              <div class="market-line">
+                <h3>${storyLink(c)}</h3>
+                <div class="meta">${meta(c)}</div>
+              </div>
+            `).join('')}
+          </section>
+
+        </div>
+
+        <div class="market-bottom">
+
+          <section>
+            <h2>IPOs</h2>
+
+            ${
+              ipo.length
+                ? ipo.slice(0, 3).map(c => `
+                    <div class="mini-line">
+                      ${storyLink(c)}
+                    </div>
+                  `).join('')
+                : '<p>No high-signal IPO developments.</p>'
+            }
+          </section>
+
+          <section>
+            <h2>Stocks & Companies</h2>
+
+            ${
+              companies.length
+                ? companies.slice(0, 3).map(c => `
+                    <div class="mini-line">
+                      ${storyLink(c)}
+                    </div>
+                  `).join('')
+                : '<p>No high-signal company developments.</p>'
+            }
+          </section>
+
+          <section>
+            <h2>Mutual Funds</h2>
+
+            ${
+              funds.length
+                ? funds.slice(0, 3).map(c => `
+                    <div class="mini-line">
+                      ${storyLink(c)}
+                    </div>
+                  `).join('')
+                : '<p>No high-signal mutual fund developments.</p>'
+            }
+          </section>
+
+        </div>
+
+      </div>
+    `;
+  }
+
+  function renderDeveloping() {
+    S.view = 'developing';
+
+    active('developing');
+
+    setHeader(
+      'LIVE',
+      'Developing',
+      'Events that are still moving.'
+    );
+
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
+
+    const items = S.clusters
+      .filter(c =>
+        c.is_developing === true ||
+        String(c.is_developing) === 'true'
+      )
       .sort(
         (a, b) =>
-          scoreOf(b) - scoreOf(a)
+          new Date(date(b)) -
+          new Date(date(a))
       );
 
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="markets-list">
-            ${
-              items
-                .slice(0, 40)
-                .map(
-                  (c, i) =>
-                    storyCard(
-                      c,
-                      i === 0
-                        ? 'lead-story'
-                        : 'story-card'
-                    )
-                )
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'No major market developments',
-            'No market story currently meets the available signal criteria.'
-          );
+    $('#contentView').innerHTML = `
+      <div class="developing-stream">
 
-    renderRail(items);
+        ${
+          items.length
+            ? items.slice(0, 30).map(c => `
+                <article>
+                  <time>${ago(date(c))}</time>
+                  <i></i>
+
+                  <div>
+                    <h3>${storyLink(c)}</h3>
+                    <span>Developing</span>
+                  </div>
+                </article>
+              `).join('')
+            : `
+              <div class="empty">
+                <h2>No developing stories right now.</h2>
+              </div>
+            `
+        }
+
+      </div>
+    `;
+  }
+
+  function renderSince() {
+    S.view = 'since';
+
+    active('since');
+
+    setHeader(
+      'TODAY',
+      'Since Last Check',
+      'What changed since your previous visit.'
+    );
+
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = false;
+
+    const cut = S.lastVisit
+      ? new Date(S.lastVisit).getTime()
+      : Date.now() - 86400000;
+
+    const items = S.clusters
+      .filter(c =>
+        new Date(date(c)).getTime() > cut
+      )
+      .sort(
+        (a, b) =>
+          new Date(date(b)) -
+          new Date(date(a))
+      );
+
+    $('#contentView').innerHTML = `
+      <div class="signal-list">
+        ${items.slice(0, 40).map(signal).join('')}
+      </div>
+    `;
+
+    rail();
   }
 
   function renderSaved() {
-    state.view = 'saved';
-    state.category = null;
+    S.view = 'saved';
 
-    setActive('saved');
+    active('saved');
 
     setHeader(
+      'LIBRARY',
       'Saved',
-      'Stories you bookmarked for later.',
-      'LIBRARY'
+      'Stories you bookmarked.'
     );
 
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), false);
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
 
-    const items = state.clusters.filter(
-      c => state.saved.has(keyOf(c))
+    const items = S.clusters.filter(c =>
+      S.saved.has(key(c))
     );
 
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="story-list">
-            ${
-              items
-                .map(c => storyCard(c))
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'Nothing saved yet',
-            'Use the bookmark control on a story to keep it here.'
-          );
-  }
-
-  async function renderArchives() {
-    state.view = 'archives';
-    state.category = null;
-
-    setActive('archives');
-
-    setHeader(
-      'Archives',
-      'Previous Daily Intelligence briefings.',
-      'LIBRARY'
-    );
-
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), false);
-
-    const box = $('#contentView');
-
-    box.innerHTML =
-      '<p class="loading-copy">Loading archives…</p>';
-
-    try {
-      const r = await fetch(
-        './data/archives.json',
-        { cache: 'no-store' }
-      );
-
-      if (!r.ok) {
-        throw new Error(
-          `HTTP ${r.status}`
-        );
-      }
-
-      const d = await r.json();
-
-      const entries = Array.isArray(d)
-        ? d
-        : first(
-            d.archives,
-            d.items,
-            d.files,
-            []
-          );
-
-      box.innerHTML =
-        entries.length
-          ? `
-            <div class="archive-list">
-              ${
-                entries.map(x => `
-                  <div class="archive-row">
-                    ${
-                      esc(
-                        first(
-                          x.date,
-                          x.generated_at,
-                          x.title,
-                          x.file,
-                          String(x)
-                        )
-                      )
-                    }
-                  </div>
-                `).join('')
-              }
-            </div>
-          `
-          : emptyState(
-              'No archives yet',
-              'Archive entries will appear after the updater creates them.'
-            );
-
-    } catch (e) {
-      box.innerHTML = emptyState(
-        'Archives unavailable',
-        'The archive index could not be loaded.'
-      );
-    }
-  }
-
-  function allSources() {
-    const map = new Map();
-
-    state.clusters.forEach(c => {
-      const list =
-        arr(c.sources).length
-          ? arr(c.sources)
-          : arr(c.articles);
-
-      if (list.length) {
-        list.forEach(s => {
-          const name =
-            typeof s === 'string'
-              ? s
-              : first(
-                  s.source,
-                  s.name,
-                  'Unknown source'
-                );
-
-          map.set(
-            name,
-            (map.get(name) || 0) + 1
-          );
-        });
-      } else {
-        const name = sourceOf(c);
-
-        map.set(
-          name,
-          (map.get(name) || 0) + 1
-        );
-      }
-    });
-
-    return [...map.entries()].sort(
-      (a, b) => b[1] - a[1]
-    );
-  }
-
-  function renderSources() {
-    state.view = 'sources';
-    state.category = null;
-
-    setActive('sources');
-
-    setHeader(
-      'Sources',
-      'Publishers represented in the current intelligence set.',
-      'COVERAGE'
-    );
-
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), false);
-
-    const items = allSources();
-
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="source-list">
-            ${
-              items.map(
-                ([name, n]) => `
-                  <div class="source-row">
-                    <strong>
-                      ${esc(name)}
-                    </strong>
-
-                    <span>
-                      ${n} item${n === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                `
-              ).join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'No source metadata',
-            'The current data does not expose source information.'
-          );
+    $('#contentView').innerHTML = items.length
+      ? `
+        <div class="signal-list">
+          ${items.map(signal).join('')}
+        </div>
+      `
+      : `
+        <div class="empty">
+          <h2>Nothing saved yet.</h2>
+          <p>
+            Bookmark a story to keep it here.
+          </p>
+        </div>
+      `;
   }
 
   function renderExplore() {
-    state.view = 'explore';
-    state.category = null;
+    S.view = 'explore';
 
-    setActive('explore');
+    active('explore');
 
     setHeader(
+      'EXPLORE',
       'Explore',
-      'Browse intelligence by topic.',
-      'TOPICS'
+      'Browse intelligence by topic.'
     );
 
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), false);
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
 
     const cats = [
       'India',
       'Indian Politics',
       'Macro Economics',
       'Business & Micro',
-      'AI',
-      'Technology',
-      'Science & Climate',
+      'Markets',
       'World',
       'Geopolitics',
       'World Politics',
-      'The Ken'
+      'AI',
+      'Technology',
+      'Science & Climate'
     ];
 
     $('#contentView').innerHTML = `
-      <div class="explore-list">
-        ${
-          cats.map(c => `
-            <button
-              class="topic-chip"
-              data-category="${esc(c)}"
-            >
-              ${esc(categoryNames[c] || c)}
-            </button>
-          `).join('')
-        }
+      <div class="explore-page">
+
+        ${cats.map(x => `
+          <button
+            ${
+              x === 'Markets'
+                ? 'data-view="markets"'
+                : `data-category="${esc(x)}"`
+            }
+          >
+            ${esc(catMap[x] || x)}
+            <span>›</span>
+          </button>
+        `).join('')}
+
       </div>
     `;
   }
 
-  function renderSearch() {
-    const q =
-      state.query.trim().toLowerCase();
+  function renderSources() {
+    S.view = 'sources';
 
-    if (!q) {
-      return;
-    }
-
-    state.view = 'search';
-    state.category = null;
+    active('sources');
 
     setHeader(
-      `Search: “${state.query.trim()}”`,
-      'Results across the current intelligence set.',
-      'SEARCH'
+      'COVERAGE',
+      'Sources',
+      'Publishers represented in the current intelligence set.'
     );
 
-    show($('#sinceLastPanel'), false);
-    show($('#contextRail'), false);
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
 
-    setActive('');
+    const map = new Map();
 
-    const items = state.clusters.filter(c =>
-      `
-        ${c.title || ''}
-        ${textOf(c)}
-        ${categoryOf(c)}
-        ${sourceOf(c)}
-      `
-        .toLowerCase()
-        .includes(q)
-    );
+    S.clusters.forEach(c => {
+      const name = source(c);
+      map.set(name, (map.get(name) || 0) + 1);
+    });
 
-    $('#contentView').innerHTML =
-      items.length
-        ? `
-          <div class="story-list">
-            ${
-              items
-                .slice(0, 60)
-                .map(c => storyCard(c))
-                .join('')
-            }
-          </div>
-        `
-        : emptyState(
-            'No matching developments',
-            'Try a broader company, person, topic or country.'
-          );
+    $('#contentView').innerHTML = `
+      <div class="source-page">
+
+        ${
+          [...map]
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, n]) => `
+              <div>
+                <b>${esc(name)}</b>
+                <span>${n} items</span>
+              </div>
+            `)
+            .join('')
+        }
+
+      </div>
+    `;
   }
 
-  function renderRail(
-    scope = state.clusters
-  ) {
-    const developing =
-      state.clusters.filter(c =>
-        c.is_developing === true ||
-        String(
-          c.is_developing
-        ).toLowerCase() === 'true'
-      ).length;
+  function renderArchives() {
+    S.view = 'archives';
 
-    const articleCount = num(
-      first(
-        state.data.article_count,
-        state.data.metadata?.article_count
-      ),
-      state.clusters.reduce(
-        (n, c) =>
-          n +
-          Math.max(
-            1,
-            arr(c.articles).length
-          ),
-        0
-      )
+    active('archives');
+
+    setHeader(
+      'LIBRARY',
+      'Archives',
+      'Previous Daily Intelligence briefings.'
     );
 
-    const clusterCount = num(
-      first(
-        state.data.cluster_count,
-        state.data.metadata?.cluster_count
-      ),
-      state.clusters.length
-    );
+    $('#sincePanel').hidden = true;
+    $('#contextRail').hidden = true;
 
-    const mustKnow =
-      state.brief.length;
-
-    const grid = $('#glanceGrid');
-
-    if (grid) {
-      grid.innerHTML = `
-        <div class="glance-item">
-          <strong>${mustKnow}</strong>
-          <span>Must Know</span>
-        </div>
-
-        <div class="glance-item">
-          <strong>${developing}</strong>
-          <span>Developing</span>
-        </div>
-
-        <div class="glance-item">
-          <strong>${articleCount}</strong>
-          <span>Articles Scanned</span>
-        </div>
-
-        <div class="glance-item">
-          <strong>${clusterCount}</strong>
-          <span>Events Clustered</span>
-        </div>
-      `;
-    }
-
-    const cutoff = state.lastVisit
-      ? new Date(
-          state.lastVisit
-        ).getTime()
-      : Date.now() -
-        24 * 3600 * 1000;
-
-    const changed =
-      state.clusters.filter(
-        c =>
-          new Date(
-            dateOf(c)
-          ).getTime() > cutoff
-      ).length;
-
-    setText(
-      'changedSummary',
-      changed
-        ? `${changed} significant development${changed === 1 ? '' : 's'} since your previous check.`
-        : 'You are caught up on the current intelligence set.'
-    );
-
-    const chips = $('#topicChips');
-
-    if (chips) {
-      chips.innerHTML = [
-        'India',
-        'Markets',
-        'AI',
-        'Geopolitics',
-        'Technology'
-      ]
-        .map(label => {
-          const cat =
-            label === 'Markets'
-              ? null
-              : label;
-
-          return `
-            <button
-              class="topic-chip"
-              ${
-                cat
-                  ? `data-category="${esc(cat)}"`
-                  : 'data-view="markets"'
-              }
-            >
-              ${esc(label)}
-            </button>
-          `;
-        })
-        .join('');
-    }
+    $('#contentView').innerHTML = `
+      <div class="empty">
+        <h2>Archives</h2>
+        <p>
+          Previous generated briefings will appear here.
+        </p>
+      </div>
+    `;
   }
 
-  function openSources(key) {
-    const c = state.clusters.find(
-      x => keyOf(x) === key
-    );
-
-    if (!c) {
-      return;
-    }
-
-    const sheet =
-      $('#sourceSheet');
-
-    const list =
-      $('#sheetSources');
-
-    if (!sheet || !list) {
-      return;
-    }
-
-    setText(
-      'sheetTitle',
-      c.title || 'Sources'
-    );
-
-    const sources =
-      arr(c.articles).length
-        ? arr(c.articles)
-        : arr(c.sources);
-
-    list.innerHTML =
-      sources.length
-        ? sources.map(s => {
-            if (
-              typeof s === 'string'
-            ) {
-              return `
-                <div class="sheet-source">
-                  <strong>
-                    ${esc(s)}
-                  </strong>
-                </div>
-              `;
-            }
-
-            const name = first(
-              s.source,
-              s.name,
-              'Source'
-            );
-
-            const url = first(
-              s.url,
-              '#'
-            );
-
-            const title = first(
-              s.title,
-              c.title,
-              ''
-            );
-
-            return `
-              <a
-                class="sheet-source"
-                href="${esc(url)}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <strong>
-                  ${esc(name)}
-                </strong>
-
-                <span>
-                  ${esc(title)}
-                </span>
-              </a>
-            `;
-          }).join('')
-        : `
-          <a
-            class="sheet-source"
-            href="${esc(urlOf(c))}"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            ${esc(sourceOf(c))}
-          </a>
-        `;
-
-    sheet.classList.remove('hidden');
-
-    sheet.setAttribute(
-      'aria-hidden',
-      'false'
-    );
-  }
-
-  function closeSources() {
-    const sheet =
-      $('#sourceSheet');
-
-    if (sheet) {
-      sheet.classList.add('hidden');
-
-      sheet.setAttribute(
-        'aria-hidden',
-        'true'
-      );
-    }
-  }
-
-  function openMenu() {
-    $('#sidebar')?.classList.add('open');
-
-    $('#menuOverlay')
-      ?.classList.add('visible');
-
-    $('#openMenu')
-      ?.setAttribute(
-        'aria-expanded',
-        'true'
-      );
-  }
-
-  function closeMenu() {
-    $('#sidebar')
-      ?.classList.remove('open');
-
-    $('#menuOverlay')
-      ?.classList.remove('visible');
-
-    $('#openMenu')
-      ?.setAttribute(
-        'aria-expanded',
-        'false'
-      );
-  }
-
-  function openSearch() {
-    $('#searchPanel')
-      ?.classList.remove('hidden');
-
-    setTimeout(
-      () =>
-        $('#searchInput')?.focus(),
-      0
-    );
-  }
-
-  function closeSearch() {
-    $('#searchPanel')
-      ?.classList.add('hidden');
-  }
-
-  function toggleTheme() {
-    const dark =
-      !document.documentElement
-        .classList.contains('dark');
-
-    document.documentElement
-      .classList.toggle(
-        'dark',
-        dark
-      );
-
-    document.body
-      .classList.toggle(
-        'dark',
-        dark
-      );
-
-    localStorage.setItem(
-      'di:theme',
-      dark ? 'dark' : 'light'
-    );
-  }
-
-  function navigate(
-    view,
-    category = null
-  ) {
+  function navigate(view, cat) {
     closeMenu();
-    closeSearch();
 
-    if (category) {
-      renderCategory(category);
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
+    if (cat) {
+      renderCategory(cat);
+      window.scrollTo(0, 0);
       return;
     }
 
@@ -1315,277 +1023,179 @@
       explore: renderExplore
     };
 
-    const render =
-      routes[view] || renderBrief;
+    (routes[view] || renderBrief)();
 
-    render();
-
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    });
+    window.scrollTo(0, 0);
   }
 
-  function bindEvents() {
-    document.addEventListener(
-      'click',
-      e => {
-        const save =
-          e.target.closest(
-            '[data-save]'
-          );
+  function closeMenu() {
+    document.body.classList.remove('menu-open');
+  }
 
-        if (save) {
-          e.preventDefault();
+  function toggleTheme() {
+    const dark =
+      document.documentElement.dataset.theme === 'dark';
 
-          const k =
-            save.dataset.save;
+    document.documentElement.dataset.theme =
+      dark ? 'light' : 'dark';
 
-          if (state.saved.has(k)) {
-            state.saved.delete(k);
-          } else {
-            state.saved.add(k);
-          }
+    localStorage.setItem(
+      'di:theme',
+      dark ? 'light' : 'dark'
+    );
+  }
 
-          saveState();
+  function bind() {
+    document.addEventListener('click', e => {
+      const save = e.target.closest('[data-save]');
 
-          if (
-            state.view === 'saved'
-          ) {
-            renderSaved();
-          } else {
-            save.textContent =
-              state.saved.has(k)
-                ? '★'
-                : '☆';
-          }
+      if (save) {
+        e.preventDefault();
 
-          return;
+        const k = save.dataset.save;
+
+        if (S.saved.has(k)) {
+          S.saved.delete(k);
+        } else {
+          S.saved.add(k);
         }
 
-        const sources =
-          e.target.closest(
-            '[data-sources]'
-          );
+        localStorage.setItem(
+          'di:saved',
+          JSON.stringify([...S.saved])
+        );
 
-        if (sources) {
-          e.preventDefault();
+        save.textContent =
+          S.saved.has(k) ? '★' : '☆';
 
-          openSources(
-            sources.dataset.sources
-          );
+        save.classList.toggle(
+          'saved',
+          S.saved.has(k)
+        );
 
-          return;
-        }
-
-        const cat =
-          e.target.closest(
-            '[data-category]'
-          );
-
-        if (cat) {
-          e.preventDefault();
-
-          navigate(
-            null,
-            cat.dataset.category
-          );
-
-          return;
-        }
-
-        const view =
-          e.target.closest(
-            '[data-view]'
-          );
-
-        if (view) {
-          e.preventDefault();
-
-          navigate(
-            view.dataset.view
-          );
-
-          return;
-        }
-
-        if (
-          e.target.closest(
-            '[data-go-brief]'
-          )
-        ) {
-          e.preventDefault();
-          navigate('brief');
-        }
+        return;
       }
+
+      const cat = e.target.closest('[data-category]');
+
+      if (cat) {
+        e.preventDefault();
+        navigate(null, cat.dataset.category);
+        return;
+      }
+
+      const view = e.target.closest('[data-view]');
+
+      if (view) {
+        e.preventDefault();
+        navigate(view.dataset.view);
+      }
+    });
+
+    $('#openMenu')?.addEventListener(
+      'click',
+      () => document.body.classList.add('menu-open')
     );
 
-    $('#viewSinceButton')
-      ?.addEventListener(
-        'click',
-        () => navigate('since')
-      );
+    $('#menuOverlay')?.addEventListener(
+      'click',
+      closeMenu
+    );
 
-    $('#contextSinceButton')
-      ?.addEventListener(
-        'click',
-        () => navigate('since')
-      );
+    $('#closeMenu')?.addEventListener(
+      'click',
+      closeMenu
+    );
 
-    $('#openMenu')
-      ?.addEventListener(
-        'click',
-        openMenu
-      );
+    $('#themeButton')?.addEventListener(
+      'click',
+      toggleTheme
+    );
 
-    $('#closeMenu')
-      ?.addEventListener(
-        'click',
-        closeMenu
-      );
+    $('#sidebarThemeButton')?.addEventListener(
+      'click',
+      toggleTheme
+    );
 
-    $('#menuOverlay')
-      ?.addEventListener(
-        'click',
-        closeMenu
-      );
+    const toggleSearch = () => {
+      $('#searchPanel')?.classList.toggle('hidden');
 
-    $('#themeButton')
-      ?.addEventListener(
-        'click',
-        toggleTheme
-      );
+      setTimeout(() => {
+        $('#searchInput')?.focus();
+      }, 0);
+    };
 
-    $('#sidebarThemeButton')
-      ?.addEventListener(
-        'click',
-        toggleTheme
-      );
+    $('#searchButton')?.addEventListener(
+      'click',
+      toggleSearch
+    );
 
-    $('#desktopSearchTrigger')
-      ?.addEventListener(
-        'click',
-        openSearch
-      );
+    $('#desktopSearchTrigger')?.addEventListener(
+      'click',
+      toggleSearch
+    );
 
-    $('#searchButton')
-      ?.addEventListener(
-        'click',
-        openSearch
-      );
+    $('#closeSearch')?.addEventListener(
+      'click',
+      () => $('#searchPanel')?.classList.add('hidden')
+    );
 
-    $('#closeSearch')
-      ?.addEventListener(
-        'click',
-        closeSearch
-      );
-
-    $('#closeSheet')
-      ?.addEventListener(
-        'click',
-        closeSources
-      );
-
-    $('#sheetBackdrop')
-      ?.addEventListener(
-        'click',
-        closeSources
-      );
-
-    $('#searchInput')
-      ?.addEventListener(
-        'keydown',
-        e => {
-          if (e.key === 'Enter') {
-            state.query =
-              e.currentTarget.value;
-
-            renderSearch();
-            closeSearch();
-          }
-        }
-      );
-
-    document.addEventListener(
+    $('#searchInput')?.addEventListener(
       'keydown',
       e => {
-        if (
-          (e.metaKey || e.ctrlKey) &&
-          e.key.toLowerCase() === 'k'
-        ) {
-          e.preventDefault();
-          openSearch();
-        }
+        if (e.key !== 'Enter') return;
 
-        if (e.key === 'Escape') {
-          closeSearch();
-          closeSources();
-          closeMenu();
-        }
+        const raw = e.target.value.trim();
+        const q = raw.toLowerCase();
+
+        if (!q) return;
+
+        setHeader(
+          'SEARCH',
+          `Results for “${raw}”`,
+          'Across the current intelligence set.'
+        );
+
+        $('#sincePanel').hidden = true;
+        $('#contextRail').hidden = true;
+
+        const items = S.clusters.filter(c =>
+          `${c.title || ''} ${desc(c)} ${source(c)} ${displayCat(c)}`
+            .toLowerCase()
+            .includes(q)
+        );
+
+        $('#contentView').innerHTML = items.length
+          ? `
+            <div class="signal-list">
+              ${items.slice(0, 50).map(signal).join('')}
+            </div>
+          `
+          : `
+            <div class="empty">
+              <h2>No matching developments.</h2>
+            </div>
+          `;
+
+        $('#searchPanel').classList.add('hidden');
       }
     );
-  }
-
-  function applyTheme() {
-    const t =
-      localStorage.getItem(
-        'di:theme'
-      );
-
-    if (t === 'dark') {
-      document.documentElement
-        .classList.add('dark');
-
-      document.body
-        .classList.add('dark');
-    }
   }
 
   async function boot() {
-    applyTheme();
-    bindEvents();
+    if (
+      localStorage.getItem('di:theme') === 'dark'
+    ) {
+      document.documentElement.dataset.theme = 'dark';
+    }
 
-    setText(
-      'topbarDate',
-      formatDate(
-        new Date(),
-        {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric'
-        }
-      )
-    );
-
-    setText(
-      'lastUpdated',
-      'Updating…'
-    );
-
-    setText(
-      'topbarUpdated',
-      'Updating…'
-    );
-
-    setText(
-      'sidebarStatus',
-      'Loading sources…'
-    );
+    bind();
 
     try {
-      /*
-       * Timestamp prevents GitHub Pages/browser caching
-       * an old latest.json.
-       */
-      const response =
-        await fetch(
-          './data/latest.json?ts=' +
-          Date.now(),
-          {
-            cache: 'no-store'
-          }
-        );
+      const response = await fetch(
+        './data/latest.json?ts=' + Date.now(),
+        { cache: 'no-store' }
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -1593,84 +1203,48 @@
         );
       }
 
-      const data =
-        await response.json();
+      S.data = await response.json();
+      S.clusters = clustersOf(S.data);
 
-      state.data = data;
-
-      state.clusters =
-        findClusterArray(data);
-
-      state.brief =
-        resolveBrief(
-          data,
-          state.clusters
-        );
-
-      if (
-        !state.clusters.length
-      ) {
+      if (!S.clusters.length) {
         throw new Error(
-          'latest.json loaded, but no story/cluster array was found'
+          'No story array found in latest.json'
         );
       }
 
-      const generated =
-        first(
-          data.generated_at,
-          data.metadata?.generated_at
-        );
+      S.brief = briefOf(
+        S.data,
+        S.clusters
+      );
 
-      const updated =
+      const generated = F(
+        S.data.generated_at,
+        S.data.metadata?.generated_at
+      );
+
+      $('#topbarDate').textContent =
+        new Intl.DateTimeFormat(
+          'en-IN',
+          {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+          }
+        ).format(new Date());
+
+      $('#topbarUpdated').textContent =
         generated
-          ? `Updated ${timeAgo(generated)}`
+          ? `Last updated ${ago(generated)}`
           : 'Data loaded';
 
-      setText(
-        'lastUpdated',
-        updated
-      );
+      $('#sidebarStatus').textContent =
+        `${S.clusters.length} events loaded`;
 
-      setText(
-        'topbarUpdated',
-        updated
-      );
+      $('#healthDot')?.classList.add('healthy');
+      $('#sidebarHealthDot')?.classList.add('healthy');
 
-      setText(
-        'sidebarStatus',
-        `${state.clusters.length} events loaded`
-      );
-
-      $('#healthDot')
-        ?.classList.add('healthy');
-
-      $('#sidebarHealthDot')
-        ?.classList.add('healthy');
-
-      const sinceCutoff =
-        state.lastVisit
-          ? new Date(
-              state.lastVisit
-            ).getTime()
-          : Date.now() -
-            24 * 3600 * 1000;
-
-      const changed =
-        state.clusters.filter(
-          c =>
-            new Date(
-              dateOf(c)
-            ).getTime() >
-            sinceCutoff
-        ).length;
-
-      setText(
-        'sinceSummary',
-        changed
-          ? `${changed} development${changed === 1 ? '' : 's'} worth catching up on`
-          : 'You are caught up'
-      );
-
+      sincePanel();
       renderBrief();
 
       localStorage.setItem(
@@ -1678,61 +1252,27 @@
         new Date().toISOString()
       );
 
-      window.DI_APP_READY = true;
-
-    } catch (err) {
+    } catch (e) {
       console.error(
-        'Daily Intelligence failed to initialise:',
-        err
+        'Daily Intelligence failed:',
+        e
       );
 
-      const msg =
-        `ERROR: ${err.message}`;
+      $('#contentView').innerHTML = `
+        <div class="empty">
+          <h2>
+            Could not load Daily Intelligence
+          </h2>
+          <p>${esc(e.message)}</p>
+        </div>
+      `;
 
-      setText(
-        'lastUpdated',
-        msg
-      );
-
-      setText(
-        'topbarUpdated',
-        msg
-      );
-
-      setText(
-        'sidebarStatus',
-        msg
-      );
-
-      const box =
-        $('#contentView');
-
-      if (box) {
-        box.innerHTML = `
-          <div class="empty-state">
-            <h2>
-              Could not load Daily Intelligence
-            </h2>
-
-            <p>
-              ${esc(err.message)}
-            </p>
-
-            <p>
-              Please verify
-              <code>docs/data/latest.json</code>
-              exists and is valid JSON.
-            </p>
-          </div>
-        `;
-      }
+      $('#sidebarStatus').textContent =
+        'Data unavailable';
     }
   }
 
-  if (
-    document.readyState ===
-    'loading'
-  ) {
+  if (document.readyState === 'loading') {
     document.addEventListener(
       'DOMContentLoaded',
       boot,
