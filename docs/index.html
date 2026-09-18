@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
 
@@ -13,24 +14,28 @@
     content="Daily Intelligence — a signal-first personal news briefing."
   >
 
-  <meta name="theme-color" content="#f4f5f1">
+  <meta
+    name="theme-color"
+    content="#f7f6f1"
+  >
 
   <title>Daily Intelligence</title>
 
   <!--
-    Cache version bumped.
-    Keep this aligned with the current redesign build.
+    Cache version.
+    Increase this whenever styles.css changes.
   -->
   <link
     rel="stylesheet"
-    href="./styles.css?v=6.4"
+    href="./styles.css?v=7.0"
   >
 </head>
+
 
 <body>
 
   <!-- =====================================================
-       MOBILE OVERLAY
+       MOBILE MENU OVERLAY
        ===================================================== -->
 
   <div
@@ -41,7 +46,7 @@
 
 
   <!-- =====================================================
-       SIDEBAR
+       LEFT SIDEBAR
        ===================================================== -->
 
   <aside
@@ -50,17 +55,23 @@
     aria-label="Main navigation"
   >
 
+    <!-- BRAND -->
+
     <div class="sidebar-top">
 
       <button
         class="sidebar-brand brand-button"
         data-view="brief"
-        aria-label="Daily Intelligence home"
         type="button"
+        aria-label="Daily Intelligence home"
       >
-        <span class="brand-mark">DI</span>
+
+        <span class="brand-mark">
+          DI
+        </span>
 
         <span>
+
           <span class="brand-name">
             Daily Intelligence
           </span>
@@ -68,14 +79,17 @@
           <span class="brand-subtitle">
             Signal over noise.
           </span>
+
         </span>
+
       </button>
+
 
       <button
         id="closeMenu"
         class="icon-button close-menu"
-        aria-label="Close menu"
         type="button"
+        aria-label="Close navigation"
       >
         ×
       </button>
@@ -83,7 +97,13 @@
     </div>
 
 
-    <nav class="navigation">
+    <!-- NAVIGATION -->
+
+    <nav
+      class="navigation"
+      aria-label="Intelligence sections"
+    >
+
 
       <!-- TODAY -->
 
@@ -116,7 +136,7 @@
           data-view="developing"
           type="button"
         >
-          <span class="nav-icon">◉</span>
+          <span class="nav-icon">●</span>
           Developing
         </button>
 
@@ -136,6 +156,7 @@
           data-category="India"
           type="button"
         >
+          <span class="nav-icon">⌖</span>
           India
         </button>
 
@@ -144,6 +165,7 @@
           data-category="Indian Politics"
           type="button"
         >
+          <span class="nav-icon">◇</span>
           Indian Politics
         </button>
 
@@ -152,7 +174,8 @@
           data-category="Macro Economics"
           type="button"
         >
-          Economy &amp; Policy
+          <span class="nav-icon">↗</span>
+          Economy & Policy
         </button>
 
         <button
@@ -160,6 +183,7 @@
           data-category="Business & Micro"
           type="button"
         >
+          <span class="nav-icon">▣</span>
           Business
         </button>
 
@@ -168,7 +192,7 @@
           data-view="markets"
           type="button"
         >
-          <span class="nav-icon">↗</span>
+          <span class="nav-icon">⌁</span>
           Markets
         </button>
 
@@ -188,6 +212,7 @@
           data-category="World"
           type="button"
         >
+          <span class="nav-icon">◎</span>
           World
         </button>
 
@@ -196,6 +221,7 @@
           data-category="Geopolitics"
           type="button"
         >
+          <span class="nav-icon">◇</span>
           Geopolitics
         </button>
 
@@ -204,18 +230,19 @@
           data-category="World Politics"
           type="button"
         >
+          <span class="nav-icon">○</span>
           World Politics
         </button>
 
       </div>
 
 
-      <!-- TECH -->
+      <!-- TECHNOLOGY -->
 
       <div class="nav-group">
 
         <div class="nav-label">
-          Tech &amp; Science
+          Technology
         </div>
 
         <button
@@ -223,7 +250,8 @@
           data-category="AI"
           type="button"
         >
-          AI
+          <span class="nav-icon">✦</span>
+          Artificial Intelligence
         </button>
 
         <button
@@ -231,6 +259,7 @@
           data-category="Technology"
           type="button"
         >
+          <span class="nav-icon">⌘</span>
           Technology
         </button>
 
@@ -239,33 +268,36 @@
           data-category="Science & Climate"
           type="button"
         >
-          Science &amp; Climate
+          <span class="nav-icon">◌</span>
+          Science & Climate
         </button>
-
-      </div>
-
-
-      <!-- MORE -->
-
-      <div class="nav-group">
-
-        <div class="nav-label">
-          More
-        </div>
 
         <button
           class="nav-item"
           data-category="The Ken"
           type="button"
         >
+          <span class="nav-icon">K</span>
           The Ken
         </button>
+
+      </div>
+
+
+      <!-- LIBRARY -->
+
+      <div class="nav-group">
+
+        <div class="nav-label">
+          Library
+        </div>
 
         <button
           class="nav-item"
           data-view="saved"
           type="button"
         >
+          <span class="nav-icon">☆</span>
           Saved
         </button>
 
@@ -274,6 +306,7 @@
           data-view="archives"
           type="button"
         >
+          <span class="nav-icon">□</span>
           Archives
         </button>
 
@@ -282,6 +315,7 @@
           data-view="sources"
           type="button"
         >
+          <span class="nav-icon">☷</span>
           Sources
         </button>
 
@@ -299,9 +333,9 @@
         class="sidebar-utility"
         type="button"
       >
-        <span>◐</span>
-        <span>Theme</span>
+        ◐ &nbsp; Appearance
       </button>
+
 
       <div class="sidebar-status">
 
@@ -322,29 +356,37 @@
 
 
   <!-- =====================================================
-       PAGE
+       PAGE SHELL
        ===================================================== -->
 
   <div class="page-shell">
 
 
-    <!-- TOP BAR -->
+    <!-- ===================================================
+         TOP BAR
+         =================================================== -->
 
     <header class="topbar">
 
       <div class="topbar-left">
 
+
+        <!-- MOBILE MENU -->
+
         <button
           id="openMenu"
           class="icon-button menu-button"
-          aria-label="Open menu"
-          aria-expanded="false"
           type="button"
+          aria-label="Open navigation"
+          aria-expanded="false"
         >
           <span></span>
           <span></span>
           <span></span>
         </button>
+
+
+        <!-- MOBILE BRAND -->
 
         <button
           class="mobile-brand brand-button"
@@ -353,6 +395,9 @@
         >
           Daily Intelligence
         </button>
+
+
+        <!-- DESKTOP DATE -->
 
         <div class="desktop-topbar-copy">
 
@@ -371,32 +416,54 @@
       </div>
 
 
+      <!-- TOP BAR ACTIONS -->
+
       <div class="topbar-actions">
+
+
+        <!-- DESKTOP SEARCH -->
 
         <button
           id="desktopSearchTrigger"
           class="search-trigger"
           type="button"
+          aria-label="Search intelligence"
         >
-          <span>⌕</span>
-          <span>Search intelligence</span>
-          <kbd>⌘K</kbd>
+
+          <span>
+            ⌕
+          </span>
+
+          <span>
+            Search intelligence
+          </span>
+
+          <kbd>
+            ⌘K
+          </kbd>
+
         </button>
+
+
+        <!-- MOBILE SEARCH -->
 
         <button
           id="searchButton"
           class="icon-button mobile-search"
-          aria-label="Search"
           type="button"
+          aria-label="Search"
         >
           ⌕
         </button>
 
+
+        <!-- THEME -->
+
         <button
           id="themeButton"
           class="icon-button"
-          aria-label="Toggle dark mode"
           type="button"
+          aria-label="Toggle appearance"
         >
           ◐
         </button>
@@ -406,7 +473,9 @@
     </header>
 
 
-    <!-- SEARCH -->
+    <!-- ===================================================
+         SEARCH PANEL
+         =================================================== -->
 
     <div
       id="searchPanel"
@@ -422,8 +491,9 @@
         <input
           id="searchInput"
           type="search"
-          placeholder="Search topics, companies, people or countries…"
           autocomplete="off"
+          placeholder="Search stories, topics or sources…"
+          aria-label="Search Daily Intelligence"
         >
 
         <button
@@ -446,7 +516,9 @@
     <main class="main-layout">
 
 
-      <!-- MAIN CONTENT -->
+      <!-- =================================================
+           PRIMARY CONTENT
+           ================================================= -->
 
       <section class="main-content">
 
@@ -457,18 +529,18 @@
 
           <div>
 
-            <!--
-              IMPORTANT:
-              app.js may target #eyebrow OR #todayDate.
-              We provide both safely.
-            -->
-
             <div
               id="eyebrow"
               class="eyebrow"
             >
               TODAY'S BRIEF
             </div>
+
+
+            <!--
+              Compatibility element for older scripts.
+              New app.js uses #eyebrow.
+            -->
 
             <div
               id="todayDate"
@@ -479,19 +551,24 @@
               TODAY'S BRIEF
             </div>
 
+
             <h1 id="pageTitle">
-              The Brief
+              5 developments worth your attention
             </h1>
+
 
             <p
               id="pageDescription"
               class="page-description"
             >
-              What matters today, without the noise.
+              A focused view on what's important in India,
+              the world and beyond.
             </p>
 
           </div>
 
+
+          <!-- UPDATE STATUS -->
 
           <div class="update-status">
 
@@ -509,7 +586,9 @@
         </header>
 
 
-        <!-- SINCE LAST CHECK -->
+        <!-- =================================================
+             SINCE LAST CHECK
+             ================================================= -->
 
         <section
           id="sinceLastPanel"
@@ -519,6 +598,7 @@
           <div class="since-icon">
             ↻
           </div>
+
 
           <div class="since-copy">
 
@@ -535,6 +615,7 @@
 
           </div>
 
+
           <button
             id="viewSinceButton"
             class="quiet-button"
@@ -548,12 +629,8 @@
 
 
         <!--
-          Compatibility alias.
-
-          Some app.js versions use #sincePanel.
-          Keeping this hidden element prevents another
-          null-selector crash while #sinceLastPanel remains
-          the actual visible component.
+          Legacy compatibility target.
+          Kept hidden so older cached JS cannot break the page.
         -->
 
         <div
@@ -563,26 +640,20 @@
         ></div>
 
 
-        <!-- DYNAMIC CONTENT -->
+        <!-- =================================================
+             DYNAMIC CONTENT
+             ================================================= -->
 
         <section
           id="contentView"
           aria-live="polite"
         >
 
-          <div class="skeleton-stack">
+          <div class="empty">
 
-            <div
-              class="skeleton hero-skeleton"
-            ></div>
-
-            <div
-              class="skeleton card-skeleton"
-            ></div>
-
-            <div
-              class="skeleton card-skeleton"
-            ></div>
+            <p>
+              Loading today's intelligence…
+            </p>
 
           </div>
 
@@ -592,80 +663,160 @@
 
 
       <!-- =================================================
-           CONTEXT RAIL
+           RIGHT CONTEXT RAIL
            ================================================= -->
 
       <aside
         id="contextRail"
         class="context-rail"
+        aria-label="Daily intelligence context"
       >
 
-        <section
-          id="glancePanel"
-          class="rail-panel"
-        >
 
-          <div class="rail-label">
-            AT A GLANCE
+        <!-- INITIAL FALLBACK CONTENT.
+             app.js replaces this after data loads. -->
+
+        <section class="rail-card">
+
+          <h3>
+            Today at a glance
+          </h3>
+
+
+          <div class="rail-stat">
+
+            <b>5</b>
+
+            <span>
+              in today's brief
+            </span>
+
           </div>
 
-          <div
-            id="glanceGrid"
-            class="glance-grid"
-          ></div>
+
+          <div class="rail-stat">
+
+            <b>—</b>
+
+            <span>
+              developing stories
+            </span>
+
+          </div>
+
+
+          <div class="rail-stat">
+
+            <b>—</b>
+
+            <span>
+              articles scanned
+            </span>
+
+          </div>
+
+
+          <div class="rail-stat">
+
+            <b>—</b>
+
+            <span>
+              events clustered
+            </span>
+
+          </div>
 
         </section>
 
 
-        <section
-          id="changedPanel"
-          class="rail-panel"
-        >
+        <!-- EXPLORE -->
 
-          <div class="rail-label">
-            YOUR CATCH-UP
-          </div>
+        <section class="rail-card explore">
 
-          <div
-            id="changedSummary"
-            class="rail-copy"
-          >
-            Loading…
-          </div>
+          <h3>
+            Explore by topic →
+          </h3>
+
 
           <button
-            id="contextSinceButton"
-            class="rail-link"
+            data-category="India"
             type="button"
           >
-            See what changed →
+            India
+          </button>
+
+
+          <button
+            data-view="markets"
+            type="button"
+          >
+            Markets
+          </button>
+
+
+          <button
+            data-category="AI"
+            type="button"
+          >
+            AI
+          </button>
+
+
+          <button
+            data-category="Macro Economics"
+            type="button"
+          >
+            Economy
+          </button>
+
+
+          <button
+            data-category="Geopolitics"
+            type="button"
+          >
+            Geopolitics
+          </button>
+
+
+          <button
+            data-category="Technology"
+            type="button"
+          >
+            Technology
+          </button>
+
+
+          <button
+            data-category="Science & Climate"
+            type="button"
+          >
+            Climate
           </button>
 
         </section>
 
 
-        <section
-          id="topicPanel"
-          class="rail-panel"
-        >
+        <!-- EDITORIAL NOTE -->
 
-          <div class="rail-label">
-            EXPLORE
-          </div>
+        <div class="rail-note">
 
-          <div
-            id="topicChips"
-            class="topic-chips"
-          ></div>
+          ❧
 
-        </section>
+          <span>
+            Less noise.<br>
+            A more informed you.
+          </span>
+
+        </div>
 
       </aside>
 
     </main>
 
 
-    <!-- FOOTER -->
+    <!-- ===================================================
+         FOOTER
+         =================================================== -->
 
     <footer class="footer">
 
@@ -683,7 +834,7 @@
 
 
   <!-- =====================================================
-       MOBILE BOTTOM NAV
+       MOBILE BOTTOM NAVIGATION
        ===================================================== -->
 
   <nav
@@ -692,8 +843,9 @@
     aria-label="Mobile navigation"
   >
 
+
     <button
-      class="mobile-nav-item active"
+      class="active"
       data-view="brief"
       type="button"
     >
@@ -701,39 +853,39 @@
       <small>Brief</small>
     </button>
 
+
     <button
-      class="mobile-nav-item"
       data-view="since"
       type="button"
     >
       <span>↻</span>
-      <small>Since</small>
+      <small>Catch-up</small>
     </button>
 
+
     <button
-      class="mobile-nav-item"
       data-view="developing"
       type="button"
     >
-      <span>◉</span>
-      <small>Live</small>
+      <span>●</span>
+      <small>Developing</small>
     </button>
 
+
     <button
-      class="mobile-nav-item"
       data-view="markets"
       type="button"
     >
-      <span>↗</span>
+      <span>⌁</span>
       <small>Markets</small>
     </button>
 
+
     <button
-      class="mobile-nav-item"
       data-view="explore"
       type="button"
     >
-      <span>⊞</span>
+      <span>☷</span>
       <small>Explore</small>
     </button>
 
@@ -755,50 +907,63 @@
       class="sheet-backdrop"
     ></div>
 
+
     <div class="sheet-panel">
 
       <div class="sheet-handle"></div>
 
-      <div class="sheet-header">
+
+      <header class="sheet-header">
 
         <div>
 
-          <div class="section-kicker">
-            COVERAGE
+          <div class="eyebrow">
+            SOURCES
           </div>
 
           <h3 id="sheetTitle">
-            Sources
+            Story sources
           </h3>
 
         </div>
 
+
         <button
           id="closeSheet"
           class="icon-button"
-          aria-label="Close sources"
           type="button"
+          aria-label="Close source panel"
         >
           ×
         </button>
 
-      </div>
+      </header>
 
-      <div
-        id="sheetSources"
-        class="sheet-sources"
-      ></div>
+
+      <div id="sheetSources"></div>
 
     </div>
 
   </div>
 
 
+  <!-- =====================================================
+       NO JAVASCRIPT FALLBACK
+       ===================================================== -->
+
   <noscript>
 
-    <div class="noscript">
-      Daily Intelligence requires JavaScript
-      to load the briefing.
+    <div class="empty">
+
+      <h2>
+        JavaScript is required
+      </h2>
+
+      <p>
+        Daily Intelligence needs JavaScript to load
+        the latest briefing.
+      </p>
+
     </div>
 
   </noscript>
@@ -811,61 +976,37 @@
   <script>
     window.DI_BOOT_STARTED = false;
 
+    window.addEventListener('error', function (event) {
+      console.error(
+        'Daily Intelligence page error:',
+        event.error || event.message
+      );
+    });
+
     window.addEventListener(
-      "error",
+      'unhandledrejection',
       function (event) {
-
-        var status =
-          document.getElementById("lastUpdated");
-
-        var topStatus =
-          document.getElementById("topbarUpdated");
-
-        var sidebarStatus =
-          document.getElementById("sidebarStatus");
-
-        var message =
-          "JavaScript error";
-
-        if (event && event.message) {
-          message += ": " + event.message;
-        }
-
-        if (status) {
-          status.textContent = message;
-        }
-
-        if (topStatus) {
-          topStatus.textContent = message;
-        }
-
-        if (sidebarStatus) {
-          sidebarStatus.textContent = message;
-        }
+        console.error(
+          'Daily Intelligence promise error:',
+          event.reason
+        );
       }
     );
   </script>
 
 
   <!-- =====================================================
-       DAILY INTELLIGENCE APP
-       CACHE VERSION: 6.4
+       APPLICATION
        ===================================================== -->
 
   <script
-    src="./app.js?v=6.4"
+    src="./app.js?v=7.0"
     onload="
       window.DI_BOOT_STARTED = true;
-      console.log('Daily Intelligence app.js v6.4 loaded');
+      console.log('Daily Intelligence app.js loaded');
     "
     onerror="
-      var a = document.getElementById('lastUpdated');
-      var b = document.getElementById('topbarUpdated');
-      var c = document.getElementById('sidebarStatus');
-
-      if (a) a.textContent = 'ERROR: app.js failed to load';
-      if (b) b.textContent = 'ERROR: app.js failed to load';
-      if (c) c.textContent = 'ERROR: app.js failed to load';
+      console.error('Daily Intelligence app.js failed to load');
     "
   ></script>
 
@@ -875,48 +1016,27 @@
        ===================================================== -->
 
   <script>
-    setTimeout(
-      function () {
+    setTimeout(function () {
 
-        if (!window.DI_BOOT_STARTED) {
-          return;
-        }
+      if (!window.DI_BOOT_STARTED) {
+
+        console.error(
+          'Daily Intelligence boot watchdog: app.js did not load.'
+        );
 
         var status =
-          document.getElementById("lastUpdated");
+          document.getElementById('sidebarStatus');
 
-        if (
-          status &&
-          (
-            status.textContent === "Starting…" ||
-            status.textContent === "Updating…"
-          )
-        ) {
-
+        if (status) {
           status.textContent =
-            "ERROR: app.js loaded but did not initialise";
-
-          var topStatus =
-            document.getElementById("topbarUpdated");
-
-          var sidebarStatus =
-            document.getElementById("sidebarStatus");
-
-          if (topStatus) {
-            topStatus.textContent =
-              "ERROR: app.js loaded but did not initialise";
-          }
-
-          if (sidebarStatus) {
-            sidebarStatus.textContent =
-              "ERROR: app.js loaded but did not initialise";
-          }
+            'Application failed to load';
         }
 
-      },
-      5000
-    );
+      }
+
+    }, 5000);
   </script>
 
 </body>
+
 </html>
