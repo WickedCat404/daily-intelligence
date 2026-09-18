@@ -18,7 +18,15 @@ import httpx
 
 
 # ============================================================
-# CONFIG
+# DAILY INTELLIGENCE V5.3
+#
+# Editorial principle:
+#   The Brief = only the most consequential developments.
+#   Markets   = a dense financial-newspaper front page.
+#
+# No OpenAI/API calls.
+# No invented market data.
+# No fabricated investor sentiment.
 # ============================================================
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +39,11 @@ ARCHIVE.mkdir(parents=True, exist_ok=True)
 TZ = "Asia/Kolkata"
 
 LOOKBACK_HOURS = 96
-MAX_FEED_ITEMS = 40
+MARKET_LOOKBACK_HOURS = 120
+IPO_LOOKBACK_HOURS = 168
+MF_LOOKBACK_HOURS = 168
+
+MAX_FEED_ITEMS = 45
 
 MIN_CLUSTER_SCORE = 18
 BRIEF_MIN_SCORE = 43
@@ -40,9 +52,6 @@ BRIEF_MAX = 8
 
 # ============================================================
 # GOOGLE NEWS DISCOVERY
-#
-# Google News RSS is used for discovery.
-# It is NOT treated as the authoritative publisher.
 # ============================================================
 
 def google_news_feed(query: str) -> str:
@@ -55,11 +64,16 @@ def google_news_feed(query: str) -> str:
 
 # ============================================================
 # SOURCES
+#
+# Direct feeds where possible.
+# Google News RSS for discovery where structured free feeds
+# are unreliable.
 # ============================================================
 
 SOURCES = [
 
-    # INDIA
+    # ---------------- INDIA ----------------
+
     {
         "name": "The Hindu India",
         "category": "India",
@@ -67,6 +81,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "Indian Express India",
         "category": "India",
@@ -74,6 +89,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "NDTV India",
         "category": "India",
@@ -82,7 +98,9 @@ SOURCES = [
         "primary": False,
     },
 
-    # INDIAN POLITICS
+
+    # ---------------- INDIAN POLITICS ----------------
+
     {
         "name": "Indian Express Political Pulse",
         "category": "Indian Politics",
@@ -90,6 +108,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "The Hindu Politics",
         "category": "Indian Politics",
@@ -98,7 +117,9 @@ SOURCES = [
         "primary": False,
     },
 
-    # ECONOMY
+
+    # ---------------- ECONOMY ----------------
+
     {
         "name": "Mint Economy",
         "category": "Macro Economics",
@@ -106,6 +127,7 @@ SOURCES = [
         "weight": 4,
         "primary": False,
     },
+
     {
         "name": "RBI",
         "category": "Macro Economics",
@@ -114,7 +136,9 @@ SOURCES = [
         "primary": True,
     },
 
-    # BUSINESS
+
+    # ---------------- BUSINESS ----------------
+
     {
         "name": "Economic Times",
         "category": "Business & Micro",
@@ -122,6 +146,7 @@ SOURCES = [
         "weight": 3,
         "primary": False,
     },
+
     {
         "name": "Mint Companies",
         "category": "Business & Micro",
@@ -130,68 +155,198 @@ SOURCES = [
         "primary": False,
     },
 
-    # INDIAN MARKETS
+
+    # ========================================================
+    # MARKETS DISCOVERY
+    # ========================================================
+
     {
-        "name": "India Market Discovery",
+        "name": "India Markets",
         "category": "Indian Markets",
         "url": google_news_feed(
-            '"Nifty" OR "Sensex" OR "SEBI" OR "FII" OR "DII" '
-            'OR "Indian stock market" when:2d'
+            '"Nifty" OR "Sensex" OR "Indian stock market" '
+            'OR "NSE" OR "BSE" when:2d'
         ),
-        "weight": 3,
+        "weight": 4,
         "primary": False,
     },
 
-    # IPO DISCOVERY
     {
-        "name": "India IPO Discovery",
+        "name": "India Market Policy",
+        "category": "Indian Markets",
+        "url": google_news_feed(
+            'India SEBI markets regulation FII FPI DII '
+            'market liquidity capital markets when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "India Market Macro",
+        "category": "Indian Markets",
+        "url": google_news_feed(
+            'India rupee bond yields RBI liquidity '
+            'stock market investors when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ========================================================
+    # COMPANIES / STOCKS
+    # ========================================================
+
+    {
+        "name": "Corporate India",
+        "category": "Companies & Earnings",
+        "url": google_news_feed(
+            'India company earnings results acquisition merger '
+            'demerger capex order NSE BSE when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "India Earnings",
+        "category": "Companies & Earnings",
+        "url": google_news_feed(
+            'India quarterly results revenue profit EBITDA '
+            'guidance NSE BSE when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "India Corporate Actions",
+        "category": "Companies & Earnings",
+        "url": google_news_feed(
+            'India listed company acquisition merger stake sale '
+            'buyback demerger rights issue fundraising when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ========================================================
+    # IPOs
+    # ========================================================
+
+    {
+        "name": "India IPO",
         "category": "IPO",
         "url": google_news_feed(
             'India IPO price band issue size lot size '
-            'subscription listing NSE BSE when:7d'
+            'subscription NSE BSE when:7d'
         ),
-        "weight": 3,
+        "weight": 4,
         "primary": False,
     },
 
-    # COMPANIES / EARNINGS
     {
-        "name": "India Earnings Discovery",
-        "category": "Companies & Earnings",
+        "name": "Upcoming IPOs",
+        "category": "IPO",
         "url": google_news_feed(
-            'India company quarterly results earnings acquisition '
-            'merger guidance NSE BSE when:2d'
+            '"upcoming IPO" India OR "IPO opens" India '
+            'OR "public issue opens" India when:7d'
         ),
-        "weight": 3,
+        "weight": 4,
         "primary": False,
     },
 
-    # MUTUAL FUNDS
     {
-        "name": "India Mutual Fund Discovery",
+        "name": "IPO Listings",
+        "category": "IPO",
+        "url": google_news_feed(
+            'India IPO listing debut listed NSE BSE when:7d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ========================================================
+    # MUTUAL FUNDS
+    # ========================================================
+
+    {
+        "name": "Mutual Funds India",
         "category": "Mutual Funds",
         "url": google_news_feed(
-            'India mutual funds AMFI SEBI SIP inflows outflows '
-            'NFO expense ratio when:7d'
+            'India mutual funds AMFI SIP inflows outflows '
+            'SEBI mutual fund when:7d'
         ),
-        "weight": 3,
+        "weight": 4,
         "primary": False,
     },
 
-    # GLOBAL -> INDIA
     {
-        "name": "Global Market Drivers",
+        "name": "Mutual Fund Policy",
+        "category": "Mutual Funds",
+        "url": google_news_feed(
+            'SEBI mutual fund regulation expense ratio '
+            'NFO India when:14d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "Mutual Fund Flows",
+        "category": "Mutual Funds",
+        "url": google_news_feed(
+            'AMFI equity mutual fund inflow SIP contribution '
+            'small cap mid cap fund flows India when:14d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ========================================================
+    # GLOBAL -> INDIA
+    # ========================================================
+
+    {
+        "name": "Global Rates",
         "category": "Global → India",
         "url": google_news_feed(
-            '"Federal Reserve" OR "US Treasury yields" OR "Brent crude" '
-            'OR OPEC OR "dollar index" OR "China economy" '
-            'OR tariffs OR "Red Sea" when:2d'
+            '"Federal Reserve" OR "US Treasury yields" '
+            'OR "dollar index" global markets when:2d'
         ),
-        "weight": 3,
+        "weight": 4,
         "primary": False,
     },
 
-    # WORLD
+    {
+        "name": "Global Commodities",
+        "category": "Global → India",
+        "url": google_news_feed(
+            '"Brent crude" OR OPEC OR oil prices '
+            'global markets India when:2d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+    {
+        "name": "Global Trade",
+        "category": "Global → India",
+        "url": google_news_feed(
+            'tariffs trade war China exports shipping '
+            'Red Sea global markets India when:3d'
+        ),
+        "weight": 4,
+        "primary": False,
+    },
+
+
+    # ---------------- WORLD ----------------
+
     {
         "name": "BBC World",
         "category": "World",
@@ -199,6 +354,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "Al Jazeera",
         "category": "Geopolitics",
@@ -206,6 +362,7 @@ SOURCES = [
         "weight": 4,
         "primary": False,
     },
+
     {
         "name": "BBC Politics",
         "category": "World Politics",
@@ -214,7 +371,9 @@ SOURCES = [
         "primary": False,
     },
 
-    # AI
+
+    # ---------------- AI ----------------
+
     {
         "name": "OpenAI",
         "category": "AI",
@@ -222,6 +381,7 @@ SOURCES = [
         "weight": 5,
         "primary": True,
     },
+
     {
         "name": "Google DeepMind",
         "category": "AI",
@@ -229,6 +389,7 @@ SOURCES = [
         "weight": 5,
         "primary": True,
     },
+
     {
         "name": "TechCrunch AI",
         "category": "AI",
@@ -236,6 +397,7 @@ SOURCES = [
         "weight": 3,
         "primary": False,
     },
+
     {
         "name": "MIT Technology Review AI",
         "category": "AI",
@@ -243,6 +405,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "Hugging Face",
         "category": "AI",
@@ -251,7 +414,9 @@ SOURCES = [
         "primary": True,
     },
 
-    # TECHNOLOGY
+
+    # ---------------- TECHNOLOGY ----------------
+
     {
         "name": "The Verge",
         "category": "Technology",
@@ -259,6 +424,7 @@ SOURCES = [
         "weight": 3,
         "primary": False,
     },
+
     {
         "name": "TechCrunch",
         "category": "Technology",
@@ -267,7 +433,9 @@ SOURCES = [
         "primary": False,
     },
 
-    # SCIENCE
+
+    # ---------------- SCIENCE ----------------
+
     {
         "name": "Quanta Magazine",
         "category": "Science & Climate",
@@ -275,6 +443,7 @@ SOURCES = [
         "weight": 5,
         "primary": False,
     },
+
     {
         "name": "MIT News",
         "category": "Science & Climate",
@@ -283,7 +452,9 @@ SOURCES = [
         "primary": True,
     },
 
-    # THE KEN
+
+    # ---------------- THE KEN ----------------
+
     {
         "name": "The Ken",
         "category": "The Ken",
@@ -295,16 +466,17 @@ SOURCES = [
 
 
 # ============================================================
-# REGEX
+# LANGUAGE PATTERNS
 # ============================================================
 
 STOP = set("""
-the a an and or but if then of to in on for from by with at as is
-are was were be been this that these those it its their his her our
-your into over after before amid says said say new latest live update
-updates news report reports how why what who when where could would
-should will can may more about than up down out off today yesterday
-breaking exclusive explained india indian
+the a an and or but if then of to in on for from by with at as
+is are was were be been this that these those it its their his
+her our your into over after before amid says said say new
+latest live update updates news report reports how why what who
+when where could would should will can may more about than up
+down out off today yesterday breaking exclusive explained
+india indian
 """.split())
 
 
@@ -317,10 +489,10 @@ AI_RE = re.compile(
 
 MACRO = re.compile(
     r"\b(inflation|interest rate|repo rate|central bank|rbi|"
-    r"federal reserve|fed rate|gdp|economic growth|fiscal|monetary|"
+    r"federal reserve|gdp|economic growth|fiscal|monetary|"
     r"currency|rupee|employment|unemployment|budget|deficit|"
-    r"bond yield|liquidity|current account|trade deficit|"
-    r"open market operation|omo)\b",
+    r"bond yield|liquidity|current account|trade deficit|omo|"
+    r"open market operation)\b",
     re.I,
 )
 
@@ -338,29 +510,96 @@ SCIENCE = re.compile(
     re.I,
 )
 
+
+# ============================================================
+# MARKETS
+# ============================================================
+
 INDIAN_MARKETS = re.compile(
     r"\b(nifty|sensex|nse|bse|sebi|dalal street|stock market|"
     r"equity market|equities|fii|fiis|fpi|fpis|dii|diis|"
-    r"foreign portfolio investors|market cap|market capitalisation|"
-    r"benchmark index|bank nifty)\b",
-    re.I,
-)
-
-IPO_RE = re.compile(
-    r"\b(ipo|initial public offering|public issue|price band|"
-    r"anchor investors|issue opens|issue closes|subscription|"
-    r"grey market premium|gmp|red herring prospectus|rhp|drhp|"
-    r"listing date|listed at|listing gain|listing premium)\b",
+    r"foreign portfolio investors|institutional investors|"
+    r"market cap|market capitalisation|benchmark index|bank nifty|"
+    r"midcap index|smallcap index|market breadth)\b",
     re.I,
 )
 
 COMPANY_EVENT = re.compile(
-    r"\b(quarterly results|earnings|revenue|net profit|ebitda|"
-    r"guidance|acquisition|acquires|merger|stake sale|buyback|"
-    r"rights issue|fundraise|fund raising|demerger|order book|"
-    r"capital expenditure|capex)\b",
+    r"\b(quarterly results|quarterly earnings|earnings|revenue|"
+    r"net profit|ebitda|guidance|acquisition|acquires|merger|"
+    r"stake sale|buyback|rights issue|fundraise|fund raising|"
+    r"demerger|order book|capex|capital expenditure|"
+    r"regulatory approval|large order|contract win)\b",
     re.I,
 )
+
+MATERIAL_COMPANY_EVENT = re.compile(
+    r"\b(acquisition|merger|demerger|bankruptcy|default|"
+    r"large order|major order|regulatory action|fraud|"
+    r"record profit|record loss|profit warning|guidance cut|"
+    r"guidance raised|buyback|rights issue|stake sale|"
+    r"capital expenditure|capex|fundraise|fund raising)\b",
+    re.I,
+)
+
+ROUTINE_STOCK_MOVE = re.compile(
+    r"\b(shares rise|shares fall|stock rises|stock falls|"
+    r"stock jumps|stock drops|stock surges|stock tumbles|"
+    r"shares jump|shares surge|shares tumble|shares slip|"
+    r"stock up|stock down)\b",
+    re.I,
+)
+
+ANALYST_NOISE = re.compile(
+    r"\b(buy rating|sell rating|target price|price target|"
+    r"brokerage recommends|brokerage says|top stock pick|"
+    r"stocks to buy|stocks to sell|multibagger|"
+    r"stock recommendation)\b",
+    re.I,
+)
+
+
+# ============================================================
+# IPO
+# ============================================================
+
+IPO_RE = re.compile(
+    r"\b(ipo|initial public offering|public issue|price band|"
+    r"anchor investors|issue opens|issue closes|subscription|"
+    r"red herring prospectus|rhp|drhp|listing date|listed at|"
+    r"listing gain|listing premium|market debut)\b",
+    re.I,
+)
+
+IPO_OPEN = re.compile(
+    r"\b(open for subscription|opens for subscription|"
+    r"subscription opens|issue opens|ipo opens|opens today|"
+    r"opened for subscription)\b",
+    re.I,
+)
+
+IPO_UPCOMING = re.compile(
+    r"\b(upcoming ipo|to open|will open|opens on|set to open|"
+    r"scheduled to open|plans ipo|files drhp|files for ipo|"
+    r"gets sebi approval|receives sebi approval)\b",
+    re.I,
+)
+
+IPO_LISTED = re.compile(
+    r"\b(listed at|lists at|listing gain|listing premium|"
+    r"listing discount|market debut|debuted at|stock market debut)\b",
+    re.I,
+)
+
+GMP_RE = re.compile(
+    r"\b(gmp|grey market premium|grey market)\b",
+    re.I,
+)
+
+
+# ============================================================
+# MUTUAL FUNDS
+# ============================================================
 
 MUTUAL_FUND_RE = re.compile(
     r"\b(mutual fund|mutual funds|amfi|sip contribution|sip inflow|"
@@ -371,12 +610,25 @@ MUTUAL_FUND_RE = re.compile(
     re.I,
 )
 
-FUND_FLOW_RE = re.compile(
-    r"\b(inflow|inflows|outflow|outflows|net flow|net inflow|"
-    r"net outflow|sip contribution|aum rises|aum falls|"
-    r"assets under management)\b",
+MF_SYSTEMIC = re.compile(
+    r"\b(amfi|sebi|regulation|rule|expense ratio|tax|taxation|"
+    r"sip contribution|net inflow|net outflow|fund flows|"
+    r"assets under management|aum|stress test|liquidity)\b",
     re.I,
 )
+
+MF_PROMO_NOISE = re.compile(
+    r"\b(best mutual fund|best fund|top mutual fund|"
+    r"funds to buy|mutual funds to invest|"
+    r"₹?10,?000 becomes|crorepati|wealth creator|"
+    r"highest return fund|top performing fund)\b",
+    re.I,
+)
+
+
+# ============================================================
+# GLOBAL -> INDIA TRANSMISSION
+# ============================================================
 
 CRUDE = re.compile(
     r"\b(brent|crude oil|oil prices|opec|opec\+|oil supply|"
@@ -391,8 +643,8 @@ FED = re.compile(
 )
 
 US_YIELDS = re.compile(
-    r"\b(treasury yield|treasury yields|us 10-year|10-year yield|"
-    r"us yields)\b",
+    r"\b(treasury yield|treasury yields|us 10-year|"
+    r"10-year yield|us yields)\b",
     re.I,
 )
 
@@ -403,8 +655,9 @@ DOLLAR = re.compile(
 )
 
 CHINA = re.compile(
-    r"\b(china economy|chinese economy|china growth|china stimulus|"
-    r"china property|chinese demand|beijing stimulus)\b",
+    r"\b(china economy|chinese economy|china growth|"
+    r"china stimulus|china property|chinese demand|"
+    r"beijing stimulus)\b",
     re.I,
 )
 
@@ -423,13 +676,6 @@ SHIPPING = re.compile(
 SEMICONDUCTORS = re.compile(
     r"\b(semiconductor|semiconductors|chip export|chip exports|"
     r"nvidia|advanced chips|chip restrictions)\b",
-    re.I,
-)
-
-SEBI_RE = re.compile(r"\bsebi\b", re.I)
-RBI_RE = re.compile(r"\b(rbi|reserve bank of india)\b", re.I)
-FLOWS_RE = re.compile(
-    r"\b(fii|fiis|fpi|fpis|dii|diis|foreign portfolio investors)\b",
     re.I,
 )
 
@@ -519,25 +765,7 @@ CRITICAL_EVENT = re.compile(
 
 
 # ============================================================
-# CALENDAR DETECTION
-# ============================================================
-
-CALENDAR_EVENT = re.compile(
-    r"\b("
-    r"results on|earnings on|results today|earnings today|"
-    r"ipo opens|ipo opening|ipo closes|ipo closing|"
-    r"listing on|to list on|"
-    r"rbi meeting|mpc meeting|policy meeting|"
-    r"fomc meeting|fed meeting|"
-    r"inflation data|cpi data|gdp data|"
-    r"monetary policy"
-    r")\b",
-    re.I,
-)
-
-
-# ============================================================
-# HELPERS
+# BASIC HELPERS
 # ============================================================
 
 TAG_RE = re.compile(r"<[^>]+>")
@@ -547,15 +775,11 @@ def clean_html(value):
     text = TAG_RE.sub(" ", unescape(value or ""))
     text = re.sub(r"\s+", " ", text).strip()
 
-    for pattern in [
-        r"read more.*$",
-        r"click here.*$",
-        r"continue reading.*$",
-        r"subscribe to.*$",
-    ]:
-        text = re.sub(pattern, "", text, flags=re.I).strip()
+    text = re.sub(r"read more.*$", "", text, flags=re.I)
+    text = re.sub(r"continue reading.*$", "", text, flags=re.I)
+    text = re.sub(r"subscribe to.*$", "", text, flags=re.I)
 
-    return text
+    return text.strip()
 
 
 def normalized(text):
@@ -599,6 +823,12 @@ def cosine(a, b):
     return dot / (na * nb)
 
 
+def stable_key(title):
+    raw = " ".join(words(title)[:14])
+
+    return hashlib.sha1(raw.encode()).hexdigest()[:20]
+
+
 def parse_date(value):
     if not value:
         return datetime.now(timezone.utc).isoformat()
@@ -615,7 +845,9 @@ def parse_date(value):
         pass
 
     try:
-        dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(
+            value.strip().replace("Z", "+00:00")
+        )
 
         if not dt.tzinfo:
             dt = dt.replace(tzinfo=timezone.utc)
@@ -628,11 +860,15 @@ def parse_date(value):
 
 def age_hours(value):
     try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
 
         return max(
             0,
-            (datetime.now(timezone.utc) - dt).total_seconds() / 3600,
+            (
+                datetime.now(timezone.utc) - dt
+            ).total_seconds() / 3600,
         )
 
     except Exception:
@@ -649,14 +885,8 @@ def text_of(node, names):
     return ""
 
 
-def stable_key(title):
-    raw = " ".join(words(title)[:14])
-
-    return hashlib.sha1(raw.encode()).hexdigest()[:20]
-
-
 # ============================================================
-# FEED PARSER
+# RSS
 # ============================================================
 
 def parse_feed(data):
@@ -674,12 +904,22 @@ def parse_feed(data):
 
         description = text_of(
             node,
-            {"description", "summary", "content", "encoded"},
+            {
+                "description",
+                "summary",
+                "content",
+                "encoded",
+            },
         )
 
         date = text_of(
             node,
-            {"pubdate", "published", "updated", "date"},
+            {
+                "pubdate",
+                "published",
+                "updated",
+                "date",
+            },
         )
 
         link = text_of(node, {"link"})
@@ -688,7 +928,10 @@ def parse_feed(data):
             for child in list(node):
                 child_tag = child.tag.split("}")[-1].lower()
 
-                if child_tag == "link" and child.attrib.get("href"):
+                if (
+                    child_tag == "link"
+                    and child.attrib.get("href")
+                ):
                     link = child.attrib["href"]
                     break
 
@@ -723,7 +966,10 @@ async def fetch(client, source):
                     "source": source["name"],
                     "source_weight": source["weight"],
                     "base_category": source["category"],
-                    "primary_source": source.get("primary", False),
+                    "primary_source": source.get(
+                        "primary",
+                        False,
+                    ),
                 }
             )
 
@@ -752,54 +998,75 @@ async def fetch(client, source):
 # ============================================================
 
 def classify(article):
-    text = article["title"] + " " + article["description"]
+    text = (
+        article["title"]
+        + " "
+        + article["description"]
+    )
+
     base = article["base_category"]
 
-    if base == "IPO":
-        return "IPO"
-
-    if base == "Mutual Funds":
-        return "Mutual Funds"
+    # Dedicated discovery feeds take priority.
 
     if base in {
         "Indian Markets",
         "Global → India",
         "Companies & Earnings",
+        "IPO",
+        "Mutual Funds",
     }:
         return base
 
-    if IPO_RE.search(text) and INDIAN_MARKETS.search(text):
+    if IPO_RE.search(text):
         return "IPO"
 
     if MUTUAL_FUND_RE.search(text):
         return "Mutual Funds"
 
-    if COMPANY_EVENT.search(text) and INDIAN_MARKETS.search(text):
+    if (
+        COMPANY_EVENT.search(text)
+        and INDIAN_MARKETS.search(text)
+    ):
         return "Companies & Earnings"
 
     if (
         INDIAN_MARKETS.search(text)
-        and base in {"Business & Micro", "Macro Economics"}
+        and base in {
+            "Business & Micro",
+            "Macro Economics",
+        }
     ):
         return "Indian Markets"
 
-    if AI_RE.search(text) and base not in {
-        "Indian Politics",
-        "World Politics",
-        "Geopolitics",
-    }:
+    if (
+        AI_RE.search(text)
+        and base not in {
+            "Indian Politics",
+            "World Politics",
+            "Geopolitics",
+        }
+    ):
         return "AI"
 
-    if MACRO.search(text) and base not in {
-        "Geopolitics",
-        "World Politics",
-    }:
+    if (
+        MACRO.search(text)
+        and base not in {
+            "Geopolitics",
+            "World Politics",
+        }
+    ):
         return "Macro Economics"
 
-    if GEO.search(text) and base == "World":
+    if (
+        GEO.search(text)
+        and base == "World"
+    ):
         return "Geopolitics"
 
-    if SCIENCE.search(text) and not AI_RE.search(text):
+    if (
+        SCIENCE.search(text)
+        and not AI_RE.search(text)
+    ):
         return "Science & Climate"
 
     return base
@@ -810,7 +1077,11 @@ def classify(article):
 # ============================================================
 
 def noise_penalty(article):
-    text = article["title"] + " " + article["description"]
+    text = (
+        article["title"]
+        + " "
+        + article["description"]
+    )
 
     penalty = 0
 
@@ -830,7 +1101,37 @@ def noise_penalty(article):
         penalty += 35
 
     if CRIME.search(text):
-        penalty += 5 if SYSTEMIC_CASUALTY.search(text) else 65
+        penalty += (
+            5
+            if SYSTEMIC_CASUALTY.search(text)
+            else 65
+        )
+
+    # Markets-specific noise.
+
+    if ANALYST_NOISE.search(text):
+        penalty += 45
+
+    if (
+        ROUTINE_STOCK_MOVE.search(text)
+        and not MATERIAL_COMPANY_EVENT.search(text)
+        and not SYSTEMIC.search(text)
+    ):
+        penalty += 25
+
+    if MF_PROMO_NOISE.search(text):
+        penalty += 55
+
+    # GMP is chatter, not primary IPO intelligence.
+    if (
+        GMP_RE.search(text)
+        and not (
+            IPO_OPEN.search(text)
+            or IPO_UPCOMING.search(text)
+            or IPO_LISTED.search(text)
+        )
+    ):
+        penalty += 30
 
     return penalty
 
@@ -840,7 +1141,7 @@ def should_drop(article):
 
 
 # ============================================================
-# INDIA MARKET TRANSMISSION
+# INDIA TRANSMISSION
 # ============================================================
 
 def market_context(text):
@@ -848,15 +1149,22 @@ def market_context(text):
     explanations = []
 
     if CRUDE.search(text):
-        channels.extend(["Crude oil", "Inflation", "INR"])
+        channels.extend([
+            "Crude oil",
+            "Inflation",
+            "INR",
+        ])
 
         explanations.append(
-            "Sustained changes in crude prices can affect India's "
+            "Sustained crude-price changes can affect India's "
             "import bill, inflation, the rupee and rate expectations."
         )
 
     if FED.search(text):
-        channels.extend(["Fed", "Foreign flows"])
+        channels.extend([
+            "Fed",
+            "Foreign flows",
+        ])
 
         explanations.append(
             "US monetary-policy expectations can influence global "
@@ -865,16 +1173,22 @@ def market_context(text):
         )
 
     if US_YIELDS.search(text):
-        channels.extend(["US yields", "Foreign flows"])
+        channels.extend([
+            "US yields",
+            "Foreign flows",
+        ])
 
         explanations.append(
-            "Changes in US Treasury yields can alter the relative "
-            "attractiveness of emerging-market assets and global "
-            "cost-of-capital conditions."
+            "US Treasury yields can alter the relative attractiveness "
+            "of emerging-market assets and global cost-of-capital "
+            "conditions."
         )
 
     if DOLLAR.search(text):
-        channels.extend(["Dollar", "INR"])
+        channels.extend([
+            "Dollar",
+            "INR",
+        ])
 
         explanations.append(
             "Broad dollar moves can affect the rupee, imported costs "
@@ -882,7 +1196,10 @@ def market_context(text):
         )
 
     if CHINA.search(text):
-        channels.extend(["China", "Commodities"])
+        channels.extend([
+            "China",
+            "Commodities",
+        ])
 
         explanations.append(
             "Changes in Chinese growth and demand can transmit through "
@@ -898,10 +1215,13 @@ def market_context(text):
         )
 
     if SHIPPING.search(text):
-        channels.extend(["Shipping", "Input costs"])
+        channels.extend([
+            "Shipping",
+            "Input costs",
+        ])
 
         explanations.append(
-            "Shipping disruptions can alter freight and import costs "
+            "Shipping disruptions can change freight and import costs "
             "and affect companies dependent on global supply chains."
         )
 
@@ -913,38 +1233,12 @@ def market_context(text):
             "electronics, autos, technology hardware and manufacturing."
         )
 
-    if SEBI_RE.search(text):
-        channels.append("SEBI")
-
-        explanations.append(
-            "SEBI rules can directly change trading, disclosure, "
-            "capital-raising or intermediary conditions in India."
-        )
-
-    if RBI_RE.search(text):
-        channels.extend(["RBI", "Rates"])
-
-        explanations.append(
-            "RBI rates and liquidity conditions influence borrowing "
-            "costs, bond yields, banking conditions and valuation inputs."
-        )
-
-    if FLOWS_RE.search(text):
-        channels.append("Institutional flows")
-
-        explanations.append(
-            "Foreign and domestic institutional flows affect market "
-            "liquidity and demand, although daily flows alone do not "
-            "explain market direction."
-        )
-
-    # Deduplicate tags while preserving order.
     channels = list(dict.fromkeys(channels))
 
-    if not explanations:
-        return None, []
-
-    return explanations[0], channels[:5]
+    return (
+        explanations[0] if explanations else None,
+        channels[:5],
+    )
 
 
 # ============================================================
@@ -952,13 +1246,25 @@ def market_context(text):
 # ============================================================
 
 def article_signal(article):
-    text = article["title"] + " " + article["description"]
+    text = (
+        article["title"]
+        + " "
+        + article["description"]
+    )
 
-    score = article.get("source_weight", 3) * 4
+    score = article.get(
+        "source_weight",
+        3,
+    ) * 4
 
-    age = age_hours(article["published_at"])
+    age = age_hours(
+        article["published_at"]
+    )
 
-    score += max(0, 28 - age * 0.7)
+    score += max(
+        0,
+        28 - age * 0.7,
+    )
 
     if article.get("primary_source"):
         score += 10
@@ -973,27 +1279,65 @@ def article_signal(article):
         "India": 5,
         "Indian Politics": 6,
         "Macro Economics": 8,
-        "Business & Micro": 4,
-        "Indian Markets": 7,
-        "Global → India": 7,
-        "Companies & Earnings": 5,
-        "IPO": 4,
-        "Mutual Funds": 4,
+
+        "Business & Micro": 3,
+
+        "Indian Markets": 9,
+        "Global → India": 8,
+        "Companies & Earnings": 7,
+        "IPO": 6,
+        "Mutual Funds": 6,
+
         "World": 4,
         "World Politics": 4,
         "Geopolitics": 8,
+
         "AI": 7,
         "Technology": 3,
         "Science & Climate": 5,
         "The Ken": 2,
     }
 
-    score += category_bonus.get(article["category"], 0)
+    score += category_bonus.get(
+        article["category"],
+        0,
+    )
+
+    # Material corporate event > random stock movement.
+
+    if (
+        article["category"] == "Companies & Earnings"
+        and MATERIAL_COMPANY_EVENT.search(text)
+    ):
+        score += 10
+
+    # Useful mutual-fund information > promotional content.
+
+    if (
+        article["category"] == "Mutual Funds"
+        and MF_SYSTEMIC.search(text)
+    ):
+        score += 9
+
+    # Useful IPO status signal.
+
+    if (
+        article["category"] == "IPO"
+        and (
+            IPO_OPEN.search(text)
+            or IPO_UPCOMING.search(text)
+            or IPO_LISTED.search(text)
+        )
+    ):
+        score += 8
 
     impact, channels = market_context(text)
 
-    if article["category"] == "Global → India" and channels:
-        score += 8
+    if (
+        article["category"] == "Global → India"
+        and channels
+    ):
+        score += 10
 
     score -= noise_penalty(article)
 
@@ -1003,91 +1347,6 @@ def article_signal(article):
 # ============================================================
 # CLUSTERING
 # ============================================================
-
-def cluster_articles(rows):
-    rows = sorted(
-        rows,
-        key=lambda x: x["published_at"],
-        reverse=True,
-    )
-
-    used = set()
-    clusters = []
-
-    for i, article in enumerate(rows):
-
-        if i in used:
-            continue
-
-        members = [article]
-        used.add(i)
-
-        base_vector = vector(article["title"])
-
-        for j, candidate in enumerate(rows):
-
-            if j in used:
-                continue
-
-            # Do not merge dedicated datasets across categories.
-            if article["category"] in {"IPO", "Mutual Funds"}:
-                if candidate["category"] != article["category"]:
-                    continue
-
-            try:
-                a_time = datetime.fromisoformat(
-                    article["published_at"].replace("Z", "+00:00")
-                )
-
-                b_time = datetime.fromisoformat(
-                    candidate["published_at"].replace("Z", "+00:00")
-                )
-
-                if abs((a_time - b_time).total_seconds()) > 60 * 3600:
-                    continue
-
-            except Exception:
-                pass
-
-            candidate_vector = vector(candidate["title"])
-
-            similarity = cosine(base_vector, candidate_vector)
-
-            a_words = set(words(article["title"]))
-            b_words = set(words(candidate["title"]))
-
-            common = a_words & b_words
-
-            overlap = len(common) / max(
-                1,
-                min(len(a_words), len(b_words)),
-            )
-
-            same_category = article["category"] == candidate["category"]
-
-            threshold = 0.34 if same_category else 0.40
-
-            if (
-                similarity >= threshold
-                or (
-                    overlap >= 0.50
-                    and len(common) >= 3
-                )
-            ):
-                members.append(candidate)
-                used.add(j)
-
-        clusters.append(make_cluster(members))
-
-    return sorted(
-        clusters,
-        key=lambda x: (
-            x["importance"],
-            x["published_at"],
-        ),
-        reverse=True,
-    )
-
 
 CATEGORY_PRIORITY = [
     "IPO",
@@ -1110,7 +1369,10 @@ CATEGORY_PRIORITY = [
 
 
 def choose_category(members):
-    categories = [x["category"] for x in members]
+    categories = [
+        x["category"]
+        for x in members
+    ]
 
     for category in CATEGORY_PRIORITY:
         if category in categories:
@@ -1124,8 +1386,15 @@ def choose_primary(members):
         members,
         key=lambda x: (
             article_signal(x)
-            + min(len(x.get("description", "")), 700) / 100
-            + (6 if x.get("primary_source") else 0)
+            + min(
+                len(x.get("description", "")),
+                700,
+            ) / 100
+            + (
+                6
+                if x.get("primary_source")
+                else 0
+            )
         ),
     )
 
@@ -1134,36 +1403,64 @@ def choose_description(members):
     options = []
 
     for article in members:
-        description = clean_html(article.get("description", ""))
+        description = clean_html(
+            article.get(
+                "description",
+                "",
+            )
+        )
 
         if len(description) < 45:
             continue
 
         score = (
             article_signal(article)
-            + min(len(description), 700) / 80
+            + min(
+                len(description),
+                700,
+            ) / 80
         )
 
-        options.append((score, description))
+        options.append(
+            (
+                score,
+                description,
+            )
+        )
 
     if not options:
         return ""
 
-    options.sort(reverse=True, key=lambda x: x[0])
+    options.sort(
+        reverse=True,
+        key=lambda x: x[0],
+    )
 
     text = options[0][1]
 
     if len(text) > 850:
-        text = text[:847].rsplit(" ", 1)[0] + "…"
+        text = (
+            text[:847]
+            .rsplit(" ", 1)[0]
+            + "…"
+        )
 
     return text
 
 
-def importance_label(members, score, source_count):
+def importance_label(
+    members,
+    score,
+    source_count,
+):
     combined = " ".join(
-        x["title"] + " " + x["description"]
+        x["title"]
+        + " "
+        + x["description"]
         for x in members
     )
+
+    # Critical is intentionally rare.
 
     if (
         CRITICAL_EVENT.search(combined)
@@ -1180,20 +1477,35 @@ def importance_label(members, score, source_count):
 
 def make_cluster(members):
     primary = choose_primary(members)
+
     category = choose_category(members)
 
-    sources = sorted(set(x["source"] for x in members))
+    sources = sorted(
+        set(
+            x["source"]
+            for x in members
+        )
+    )
 
-    best_score = max(article_signal(x) for x in members)
+    best_score = max(
+        article_signal(x)
+        for x in members
+    )
 
     confirmation_bonus = min(
         15,
-        max(0, len(sources) - 1) * 5,
+        max(
+            0,
+            len(sources) - 1,
+        ) * 5,
     )
 
     official_bonus = (
         6
-        if any(x.get("primary_source") for x in members)
+        if any(
+            x.get("primary_source")
+            for x in members
+        )
         else 0
     )
 
@@ -1204,11 +1516,15 @@ def make_cluster(members):
     )
 
     combined_text = " ".join(
-        x["title"] + " " + x["description"]
+        x["title"]
+        + " "
+        + x["description"]
         for x in members
     )
 
-    impact, channels = market_context(combined_text)
+    impact, channels = market_context(
+        combined_text
+    )
 
     if category not in {
         "Indian Markets",
@@ -1221,7 +1537,10 @@ def make_cluster(members):
         impact = None
         channels = []
 
-    published = max(x["published_at"] for x in members)
+    published = max(
+        x["published_at"]
+        for x in members
+    )
 
     label = importance_label(
         members,
@@ -1229,32 +1548,212 @@ def make_cluster(members):
         len(sources),
     )
 
+    description = choose_description(
+        members
+    )
+
     return {
-        "cluster_key": stable_key(primary["title"]),
-        "title": primary["title"],
-        "description": choose_description(members),
-        "brief": choose_description(members),
-        "category": category,
-        "published_at": published,
-        "importance": round(importance, 2),
-        "importance_label": label,
-        "source_count": len(sources),
-        "sources": sources,
-        "primary": primary,
-        "articles": sorted(
-            members,
-            key=lambda x: x["published_at"],
-            reverse=True,
-        ),
-        "market_impact": impact,
-        "market_channels": channels,
-        "is_developing": False,
-        "summary_mode": "source-brief",
+        "cluster_key":
+            stable_key(primary["title"]),
+
+        "title":
+            primary["title"],
+
+        "description":
+            description,
+
+        "brief":
+            description,
+
+        "category":
+            category,
+
+        "published_at":
+            published,
+
+        "importance":
+            round(importance, 2),
+
+        "importance_label":
+            label,
+
+        "source_count":
+            len(sources),
+
+        "sources":
+            sources,
+
+        "primary":
+            primary,
+
+        "articles":
+            sorted(
+                members,
+                key=lambda x:
+                    x["published_at"],
+                reverse=True,
+            ),
+
+        "market_impact":
+            impact,
+
+        "market_channels":
+            channels,
+
+        "is_developing":
+            False,
+
+        "summary_mode":
+            "source-brief",
     }
+
+
+def cluster_articles(rows):
+    rows = sorted(
+        rows,
+        key=lambda x:
+            x["published_at"],
+        reverse=True,
+    )
+
+    used = set()
+    clusters = []
+
+    for i, article in enumerate(rows):
+
+        if i in used:
+            continue
+
+        members = [article]
+
+        used.add(i)
+
+        base_vector = vector(
+            article["title"]
+        )
+
+        for j, candidate in enumerate(rows):
+
+            if j in used:
+                continue
+
+            # Dedicated finance categories should not bleed
+            # into each other merely because the company name
+            # appears in both stories.
+
+            if article["category"] in {
+                "IPO",
+                "Mutual Funds",
+            }:
+                if (
+                    candidate["category"]
+                    != article["category"]
+                ):
+                    continue
+
+            try:
+                a_time = datetime.fromisoformat(
+                    article[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
+
+                b_time = datetime.fromisoformat(
+                    candidate[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
+
+                if abs(
+                    (
+                        a_time - b_time
+                    ).total_seconds()
+                ) > 60 * 3600:
+                    continue
+
+            except Exception:
+                pass
+
+            candidate_vector = vector(
+                candidate["title"]
+            )
+
+            similarity = cosine(
+                base_vector,
+                candidate_vector,
+            )
+
+            a_words = set(
+                words(article["title"])
+            )
+
+            b_words = set(
+                words(candidate["title"])
+            )
+
+            common = (
+                a_words
+                & b_words
+            )
+
+            overlap = (
+                len(common)
+                / max(
+                    1,
+                    min(
+                        len(a_words),
+                        len(b_words),
+                    ),
+                )
+            )
+
+            same_category = (
+                article["category"]
+                == candidate["category"]
+            )
+
+            threshold = (
+                0.34
+                if same_category
+                else 0.40
+            )
+
+            if (
+                similarity >= threshold
+                or (
+                    overlap >= 0.50
+                    and len(common) >= 3
+                )
+            ):
+                members.append(candidate)
+
+                used.add(j)
+
+        clusters.append(
+            make_cluster(members)
+        )
+
+    return sorted(
+        clusters,
+        key=lambda x: (
+            x["importance"],
+            x["published_at"],
+        ),
+        reverse=True,
+    )
 
 
 # ============================================================
 # THE BRIEF
+#
+# Markets has much more content.
+# The Brief remains selective.
 # ============================================================
 
 CATEGORY_CAPS = {
@@ -1277,44 +1776,67 @@ CATEGORY_CAPS = {
 CATEGORY_FAMILIES = {
     "India": "india",
     "Indian Politics": "india",
+
     "Macro Economics": "economy",
+
     "Business & Micro": "business",
     "Companies & Earnings": "business",
+
     "Indian Markets": "markets",
     "Global → India": "markets",
+
     "World": "world",
     "World Politics": "world",
     "Geopolitics": "world",
+
     "AI": "technology",
     "Technology": "technology",
+
     "Science & Climate": "science",
+
     "The Ken": "special",
 }
 
 
 def select_brief(clusters):
-    # IPO and MF discovery have dedicated views.
     eligible = [
         cluster
         for cluster in clusters
         if (
-            cluster["category"] not in {"IPO", "Mutual Funds"}
-            and cluster["importance_label"] in {
+            cluster["category"]
+            not in {
+                "IPO",
+                "Mutual Funds",
+            }
+            and cluster[
+                "importance_label"
+            ]
+            in {
                 "critical",
                 "significant",
             }
-            and cluster["importance"] >= BRIEF_MIN_SCORE
+            and cluster[
+                "importance"
+            ]
+            >= BRIEF_MIN_SCORE
         )
     ]
 
     selected = []
+
     category_counts = Counter()
     family_counts = Counter()
 
-    # First pass: diversity.
+    # First pass: category diversity.
+
     for cluster in eligible:
+
         category = cluster["category"]
-        family = CATEGORY_FAMILIES.get(category, category)
+
+        family = CATEGORY_FAMILIES.get(
+            category,
+            category,
+        )
 
         if family_counts[family] >= 1:
             continue
@@ -1327,121 +1849,90 @@ def select_brief(clusters):
         if len(selected) >= 6:
             break
 
-    # Second pass: genuinely strong additional stories.
-    if len(selected) < BRIEF_MAX:
+    # Second pass: genuinely important extras.
 
-        for cluster in eligible:
+    for cluster in eligible:
 
-            if cluster in selected:
-                continue
+        if len(selected) >= BRIEF_MAX:
+            break
 
-            category = cluster["category"]
-            family = CATEGORY_FAMILIES.get(category, category)
+        if cluster in selected:
+            continue
 
-            if (
-                category_counts[category]
-                >= CATEGORY_CAPS.get(category, 1)
-            ):
-                continue
+        category = cluster["category"]
 
-            if family_counts[family] >= 2:
-                continue
+        family = CATEGORY_FAMILIES.get(
+            category,
+            category,
+        )
 
-            selected.append(cluster)
+        if (
+            category_counts[category]
+            >= CATEGORY_CAPS.get(
+                category,
+                1,
+            )
+        ):
+            continue
 
-            category_counts[category] += 1
-            family_counts[family] += 1
+        if family_counts[family] >= 2:
+            continue
 
-            if len(selected) >= BRIEF_MAX:
-                break
+        selected.append(cluster)
+
+        category_counts[category] += 1
+        family_counts[family] += 1
 
     return selected[:BRIEF_MAX]
 
 
 # ============================================================
-# V5.2 IPO INTELLIGENCE
+# IPO STRUCTURED EXTRACTION
+#
+# Conservative.
+# Missing data stays missing.
 # ============================================================
-
-def extract_ipo_name(title):
-    title = re.sub(
-        r"\s*[-|:]\s*(IPO|initial public offering).*$",
-        "",
-        title,
-        flags=re.I,
-    )
-
-    title = re.sub(
-        r"\bIPO\b.*$",
-        "",
-        title,
-        flags=re.I,
-    ).strip(" :-|")
-
-    return title[:100] or "IPO"
-
-
-def ipo_status(text):
-    lower = text.lower()
-
-    if re.search(
-        r"\b(opens today|open for subscription|subscription opens|"
-        r"issue opens today|ipo opens today)\b",
-        lower,
-    ):
-        return "OPEN NOW"
-
-    if re.search(
-        r"\b(upcoming ipo|to open|will open|opens on|"
-        r"set to open|scheduled to open)\b",
-        lower,
-    ):
-        return "UPCOMING"
-
-    if re.search(
-        r"\b(listed at|listing gain|listing premium|"
-        r"listing discount|market debut|debuted at)\b",
-        lower,
-    ):
-        return "RECENTLY LISTED"
-
-    return "IPO UPDATE"
-
 
 def extract_price_band(text):
     patterns = [
-        r"(?:price band|price range)[^\d₹]{0,12}"
-        r"(₹?\s?[\d,]+(?:\.\d+)?)\s*(?:-|to|–)\s*"
-        r"(₹?\s?[\d,]+(?:\.\d+)?)",
+        (
+            r"(?:price band|price range)"
+            r"[^\d₹]{0,15}"
+            r"₹?\s?([\d,]+(?:\.\d+)?)"
+            r"\s*(?:-|to|–)\s*"
+            r"₹?\s?([\d,]+(?:\.\d+)?)"
+        ),
 
-        r"₹\s?([\d,]+)\s*(?:-|to|–)\s*₹?\s?([\d,]+)"
+        (
+            r"₹\s?([\d,]+)"
+            r"\s*(?:-|to|–)\s*"
+            r"₹?\s?([\d,]+)"
+        ),
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, text, re.I)
+
+        match = re.search(
+            pattern,
+            text,
+            re.I,
+        )
 
         if match:
-            a = match.group(1).replace("₹", "").strip()
-            b = match.group(2).replace("₹", "").strip()
-
-            return f"₹{a}–₹{b}"
+            return (
+                f"₹{match.group(1)}"
+                f"–₹{match.group(2)}"
+            )
 
     return None
 
 
-def extract_lot_size(text):
-    match = re.search(
-        r"(?:lot size|minimum bid)[^\d]{0,15}([\d,]+)\s*(?:shares?)?",
-        text,
-        re.I,
-    )
-
-    return match.group(1) if match else None
-
-
 def extract_issue_size(text):
     match = re.search(
-        r"(?:issue size|ipo size)[^₹\d]{0,15}"
-        r"₹?\s?([\d,.]+)\s*(crore|cr|billion|million)",
+        r"(?:issue size|ipo size)"
+        r"[^₹\d]{0,20}"
+        r"₹?\s?([\d,.]+)"
+        r"\s*(crore|cr|billion|million)",
         text,
         re.I,
     )
@@ -1449,10 +1940,74 @@ def extract_issue_size(text):
     if not match:
         return None
 
-    value = match.group(1)
-    unit = match.group(2)
+    return (
+        f"₹{match.group(1)} "
+        f"{match.group(2)}"
+    )
 
-    return f"₹{value} {unit}"
+
+def extract_lot_size(text):
+    match = re.search(
+        r"(?:lot size|minimum bid)"
+        r"[^\d]{0,20}"
+        r"([\d,]+)"
+        r"\s*(?:shares?)?",
+        text,
+        re.I,
+    )
+
+    return (
+        match.group(1)
+        if match
+        else None
+    )
+
+
+def ipo_status(text):
+    if IPO_LISTED.search(text):
+        return "RECENTLY LISTED"
+
+    if IPO_OPEN.search(text):
+        return "OPEN NOW"
+
+    if IPO_UPCOMING.search(text):
+        return "UPCOMING"
+
+    return "IPO UPDATE"
+
+
+def extract_ipo_name(title):
+    value = re.sub(
+        r"\s*[-|:]\s*"
+        r"(IPO|initial public offering).*$",
+        "",
+        title,
+        flags=re.I,
+    )
+
+    if len(value.strip()) < 3:
+        return title[:100]
+
+    return value.strip()[:100]
+
+
+def useful_ipo_text(story):
+    text = clean_html(
+        story.get("description", "")
+    )
+
+    if not text:
+        return ""
+
+    parts = text.split()
+
+    if len(parts) > 50:
+        text = (
+            " ".join(parts[:50])
+            + "…"
+        )
+
+    return text
 
 
 def build_ipo_data(clusters):
@@ -1468,24 +2023,62 @@ def build_ipo_data(clusters):
         text = (
             story["title"]
             + " "
-            + story.get("description", "")
+            + story.get(
+                "description",
+                "",
+            )
         )
 
         status = ipo_status(text)
 
+        # Don't pretend a generic IPO mention is an
+        # active/upcoming/listed issue.
+
+        if status == "IPO UPDATE":
+            continue
+
         item = {
-            "name": extract_ipo_name(story["title"]),
-            "status": status,
-            "sector": None,
-            "price_band": extract_price_band(text),
-            "issue_size": extract_issue_size(text),
-            "lot_size": extract_lot_size(text),
-            "close_date": None,
-            "listing_date": None,
-            "what_to_know": useful_ipo_description(story),
-            "url": story["primary"].get("url"),
-            "source": story["primary"].get("source"),
-            "published_at": story["published_at"],
+            "name":
+                extract_ipo_name(
+                    story["title"]
+                ),
+
+            "status":
+                status,
+
+            "sector":
+                None,
+
+            "price_band":
+                extract_price_band(text),
+
+            "issue_size":
+                extract_issue_size(text),
+
+            "lot_size":
+                extract_lot_size(text),
+
+            "close_date":
+                None,
+
+            "listing_date":
+                None,
+
+            "what_to_know":
+                useful_ipo_text(story),
+
+            "url":
+                story["primary"].get(
+                    "url"
+                ),
+
+            "source":
+                story["primary"].get(
+                    "source"
+                ),
+
+            "published_at":
+                story["published_at"],
         }
 
         if status == "OPEN NOW":
@@ -1498,195 +2091,103 @@ def build_ipo_data(clusters):
             recent_items.append(item)
 
     return {
-        "ipo_open": open_items[:15],
-        "ipo_upcoming": upcoming_items[:15],
-        "ipo_recent": recent_items[:15],
+        "ipo_open":
+            open_items[:8],
+
+        "ipo_upcoming":
+            upcoming_items[:8],
+
+        "ipo_recent":
+            recent_items[:8],
     }
 
 
-def useful_ipo_description(story):
-    description = clean_html(story.get("description", ""))
-
-    if not description:
-        return (
-            "Review the offer document, use of proceeds, "
-            "fresh issue versus OFS and listed peers."
-        )
-
-    words_list = description.split()
-
-    if len(words_list) > 55:
-        description = " ".join(words_list[:55]) + "…"
-
-    return description
-
-
 # ============================================================
-# MUTUAL FUND INTELLIGENCE
-# ============================================================
+# MUTUAL FUNDS
+============================================================ */
 
 def build_mutual_fund_data(clusters):
-    news = []
+    stories = [
+        story
+        for story in clusters
+        if story["category"]
+        == "Mutual Funds"
+    ]
 
-    flow_items = []
+    stories = sorted(
+        stories,
+        key=lambda x: (
+            x["importance"],
+            x["published_at"],
+        ),
+        reverse=True,
+    )
 
-    for story in clusters:
+    flow_stories = []
 
-        if story["category"] != "Mutual Funds":
-            continue
-
-        news.append(story)
+    for story in stories:
 
         text = (
             story["title"]
             + " "
-            + story.get("description", "")
+            + story.get(
+                "description",
+                "",
+            )
         )
 
-        if FUND_FLOW_RE.search(text):
-
-            flow_items.append(
-                {
-                    "category": "FUND FLOWS",
-                    "title": story["title"],
-                    "description": useful_summary_for_market(story),
-                    "source": story["primary"].get("source"),
-                    "url": story["primary"].get("url"),
-                    "published_at": story["published_at"],
-                }
-            )
+        if MF_SYSTEMIC.search(text):
+            flow_stories.append(story)
 
     return {
-        "mutual_fund_news": news[:15],
-        "fund_flows": flow_items[:12],
+        "mutual_fund_news":
+            stories[:12],
+
+        # These remain actual stories, not invented
+        # numerical data.
+        "fund_flows":
+            flow_stories[:8],
     }
 
 
-def useful_summary_for_market(story):
-    text = clean_html(
-        story.get("brief")
-        or story.get("description")
-        or ""
-    )
-
-    words_list = text.split()
-
-    if len(words_list) > 65:
-        text = " ".join(words_list[:65]) + "…"
-
-    return text
-
-
 # ============================================================
-# MARKET CALENDAR
+# MARKET DATA OBJECT
 #
-# Conservative by design.
-# We do not infer dates that aren't explicit.
-# ============================================================
-
-def build_calendar(clusters):
-    events = []
-
-    seen = set()
-
-    for story in clusters:
-
-        text = (
-            story["title"]
-            + " "
-            + story.get("description", "")
-        )
-
-        if not CALENDAR_EVENT.search(text):
-            continue
-
-        if story["category"] == "IPO":
-            event_type = "IPO"
-
-        elif RBI_RE.search(text):
-            event_type = "RBI"
-
-        elif FED.search(text):
-            event_type = "FED"
-
-        elif COMPANY_EVENT.search(text):
-            event_type = "EARNINGS"
-
-        else:
-            event_type = "MACRO"
-
-        key = normalized(story["title"])
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-
-        events.append(
-            {
-                "type": event_type,
-                "date": short_calendar_date(story["published_at"]),
-                "title": story["title"],
-                "why_it_matters": (
-                    story.get("market_impact")
-                    or useful_summary_for_market(story)
-                ),
-                "url": story["primary"].get("url"),
-            }
-        )
-
-    return events[:15]
-
-
-def short_calendar_date(value):
-    try:
-        dt = datetime.fromisoformat(
-            value.replace("Z", "+00:00")
-        ).astimezone(ZoneInfo(TZ))
-
-        return dt.strftime("%d %b")
-
-    except Exception:
-        return ""
-
-
-# ============================================================
-# INVESTOR CONVERSATION
-#
-# Intentionally empty until a dedicated community-data
-# pipeline is added.
-#
-# We do not label news headlines as "investor sentiment".
-# ============================================================
-
-def build_investor_conversation():
-    return []
-
-
-# ============================================================
-# MARKET OBJECT
+# Frontend uses this for IPO + MF.
+# Main market headlines still come from clusters.
 # ============================================================
 
 def build_markets(clusters):
     ipo = build_ipo_data(clusters)
-    funds = build_mutual_fund_data(clusters)
+
+    mf = build_mutual_fund_data(
+        clusters
+    )
 
     return {
-        "ipo_open": ipo["ipo_open"],
-        "ipo_upcoming": ipo["ipo_upcoming"],
-        "ipo_recent": ipo["ipo_recent"],
+        "ipo_open":
+            ipo["ipo_open"],
 
-        "investor_conversation":
-            build_investor_conversation(),
+        "ipo_upcoming":
+            ipo["ipo_upcoming"],
+
+        "ipo_recent":
+            ipo["ipo_recent"],
 
         "mutual_fund_news":
-            funds["mutual_fund_news"],
+            mf["mutual_fund_news"],
 
         "fund_flows":
-            funds["fund_flows"],
+            mf["fund_flows"],
 
+        # Intentionally blank until a genuine
+        # community-discussion pipeline exists.
+        "investor_conversation":
+            [],
+
+        # Removed from the visible V5.3 interface.
         "calendar":
-            build_calendar(clusters),
+            [],
     }
 
 
@@ -1695,10 +2196,9 @@ def build_markets(clusters):
 # ============================================================
 
 async def main():
-
     headers = {
         "User-Agent":
-            "DailyIntelligence/5.2 "
+            "DailyIntelligence/5.3 "
             "(personal RSS intelligence reader)"
     }
 
@@ -1715,25 +2215,31 @@ async def main():
 
         results = await asyncio.gather(
             *[
-                fetch(client, source)
+                fetch(
+                    client,
+                    source,
+                )
                 for source in SOURCES
             ]
         )
 
     health = [
         status
-        for _, status in results
+        for _,
+        status
+        in results
     ]
 
     incoming = [
         article
-        for batch, _ in results
-        for article in batch
+        for batch, _
+        in results
+        for article
+        in batch
     ]
 
-    cutoff = (
-        datetime.now(timezone.utc)
-        - timedelta(hours=LOOKBACK_HOURS)
+    now = datetime.now(
+        timezone.utc
     )
 
     unique = {}
@@ -1743,87 +2249,164 @@ async def main():
 
     for article in incoming:
 
-        article["category"] = classify(article)
+        article["category"] = classify(
+            article
+        )
 
         try:
             published = datetime.fromisoformat(
-                article["published_at"].replace(
+                article[
+                    "published_at"
+                ].replace(
                     "Z",
                     "+00:00",
                 )
             )
 
-            if published < cutoff:
-                stale_filtered += 1
-                continue
+            age = (
+                now - published
+            ).total_seconds() / 3600
 
         except Exception:
-            pass
+            age = 999
+
+        category = article["category"]
+
+        if category == "IPO":
+            max_age = IPO_LOOKBACK_HOURS
+
+        elif category == "Mutual Funds":
+            max_age = MF_LOOKBACK_HOURS
+
+        elif category in {
+            "Indian Markets",
+            "Global → India",
+            "Companies & Earnings",
+        }:
+            max_age = MARKET_LOOKBACK_HOURS
+
+        else:
+            max_age = LOOKBACK_HOURS
+
+        if age > max_age:
+            stale_filtered += 1
+            continue
 
         if should_drop(article):
             noise_filtered += 1
             continue
 
-        article["signal_score"] = article_signal(article)
+        article["signal_score"] = (
+            article_signal(article)
+        )
 
-        unique[article["url"]] = article
+        # URL dedupe.
+        unique[
+            article["url"]
+        ] = article
 
-    rows = list(unique.values())
+    rows = list(
+        unique.values()
+    )
 
-    clusters = cluster_articles(rows)
+    clusters = cluster_articles(
+        rows
+    )
 
     clusters = [
         cluster
         for cluster in clusters
-        if cluster["importance"] >= MIN_CLUSTER_SCORE
+        if cluster["importance"]
+        >= MIN_CLUSTER_SCORE
     ]
 
-    top = select_brief(clusters)
+    top = select_brief(
+        clusters
+    )
 
-    markets = build_markets(clusters)
+    markets = build_markets(
+        clusters
+    )
 
-    generated = datetime.now(timezone.utc).isoformat()
+    generated = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     payload = {
-        "version": "5.2",
-        "generated_at": generated,
+        "version":
+            "5.3",
 
-        "article_count": len(rows),
-        "cluster_count": len(clusters),
-        "brief_count": len(top),
+        "generated_at":
+            generated,
 
-        "noise_filtered": noise_filtered,
-        "stale_filtered": stale_filtered,
+        "article_count":
+            len(rows),
 
-        "clustering_mode": "signal-diversity-v5.2",
-        "summary_mode": "source-brief",
+        "cluster_count":
+            len(clusters),
 
-        "sources": health,
-        "top": top,
-        "clusters": clusters,
+        "brief_count":
+            len(top),
 
-        # NEW IN V5.2
-        "markets": markets,
+        "noise_filtered":
+            noise_filtered,
+
+        "stale_filtered":
+            stale_filtered,
+
+        "clustering_mode":
+            "editorial-markets-v5.3",
+
+        "summary_mode":
+            "source-brief",
+
+        "sources":
+            health,
+
+        "top":
+            top,
+
+        "clusters":
+            clusters,
+
+        "markets":
+            markets,
     }
 
-    (DATA / "latest.json").write_text(
+    (
+        DATA
+        / "latest.json"
+    ).write_text(
         json.dumps(
             payload,
             ensure_ascii=False,
-            separators=(",", ":"),
+            separators=(
+                ",",
+                ":",
+            ),
         ),
         encoding="utf-8",
     )
+
 
     # ========================================================
     # DAILY ARCHIVE
     # ========================================================
 
-    local = datetime.now(ZoneInfo(TZ))
+    local = datetime.now(
+        ZoneInfo(TZ)
+    )
 
-    date = local.date().isoformat()
+    date = (
+        local
+        .date()
+        .isoformat()
+    )
 
-    archive_file = ARCHIVE / f"{date}.json"
+    archive_file = (
+        ARCHIVE
+        / f"{date}.json"
+    )
 
     if (
         local.hour > 6
@@ -1836,21 +2419,24 @@ async def main():
         archive_file.write_text(
             json.dumps(
                 {
-                    "date": date,
-                    "created_at": generated,
-                    "top": top,
-                    "markets": {
-                        "ipo_open":
-                            markets["ipo_open"],
-                        "ipo_upcoming":
-                            markets["ipo_upcoming"],
-                    },
+                    "date":
+                        date,
+
+                    "created_at":
+                        generated,
+
+                    "top":
+                        top,
                 },
                 ensure_ascii=False,
-                separators=(",", ":"),
+                separators=(
+                    ",",
+                    ":",
+                ),
             ),
             encoding="utf-8",
         )
+
 
     # ========================================================
     # ARCHIVE INDEX
@@ -1896,60 +2482,113 @@ async def main():
         except Exception:
             pass
 
-    (DATA / "archives.json").write_text(
+    (
+        DATA
+        / "archives.json"
+    ).write_text(
         json.dumps(
             archives,
             ensure_ascii=False,
-            separators=(",", ":"),
+            separators=(
+                ",",
+                ":",
+            ),
         ),
         encoding="utf-8",
     )
 
+
     # ========================================================
-    # LOGGING / QA
+    # QA LOG
     # ========================================================
 
     healthy = sum(
         1
-        for source in health
+        for source
+        in health
         if source["ok"]
     )
 
     failed = [
         source["source"]
-        for source in health
+        for source
+        in health
         if not source["ok"]
     ]
 
-    market_count = sum(
-        1
+    market_stories = [
+        cluster
         for cluster in clusters
-        if cluster["category"] in {
+        if cluster["category"]
+        in {
             "Indian Markets",
             "Global → India",
             "Companies & Earnings",
         }
+    ]
+
+    india_market = sum(
+        1
+        for x in market_stories
+        if x["category"]
+        == "Indian Markets"
     )
 
-    critical_count = sum(
+    global_india = sum(
         1
-        for cluster in top
-        if cluster["importance_label"] == "critical"
+        for x in market_stories
+        if x["category"]
+        == "Global → India"
+    )
+
+    companies = sum(
+        1
+        for x in market_stories
+        if x["category"]
+        == "Companies & Earnings"
+    )
+
+    critical = sum(
+        1
+        for x in top
+        if x["importance_label"]
+        == "critical"
     )
 
     print(
         "\n"
         "============================================\n"
-        "DAILY INTELLIGENCE V5.2\n"
+        "DAILY INTELLIGENCE V5.3\n"
         "============================================"
     )
 
-    print(f"Useful articles:       {len(rows)}")
-    print(f"Clusters:              {len(clusters)}")
-    print(f"Brief stories:         {len(top)}")
-    print(f"Critical stories:      {critical_count}")
+    print(
+        f"Useful articles:       {len(rows)}"
+    )
 
-    print(f"Market stories:        {market_count}")
+    print(
+        f"Clusters:              {len(clusters)}"
+    )
+
+    print(
+        f"Brief stories:         {len(top)}"
+    )
+
+    print(
+        f"Critical stories:      {critical}"
+    )
+
+    print(
+        f"Indian Markets:        {india_market}"
+    )
+
+    print(
+        f"Global -> India:       {global_india}"
+    )
+
+    print(
+        f"Companies & Earnings:  {companies}"
+    )
 
     print(
         f"IPO open:              "
@@ -1972,24 +2611,28 @@ async def main():
     )
 
     print(
-        f"Fund flow stories:     "
-        f"{len(markets['fund_flows'])}"
+        f"Noise filtered:        {noise_filtered}"
     )
 
     print(
-        f"Calendar events:       "
-        f"{len(markets['calendar'])}"
+        f"Stale filtered:        {stale_filtered}"
     )
 
-    print(f"Noise filtered:        {noise_filtered}")
-    print(f"Stale filtered:        {stale_filtered}")
-    print(f"Healthy sources:       {healthy}/{len(health)}")
+    print(
+        f"Healthy sources:       "
+        f"{healthy}/{len(health)}"
+    )
 
     if failed:
-        print("\nFailed feeds:")
+
+        print(
+            "\nFailed feeds:"
+        )
 
         for source in failed:
-            print(f"  - {source}")
+            print(
+                f"  - {source}"
+            )
 
     print(
         "============================================\n"
