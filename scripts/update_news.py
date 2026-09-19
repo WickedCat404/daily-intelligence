@@ -18,17 +18,20 @@ import httpx
 
 
 # ============================================================
-# DAILY INTELLIGENCE V5.4
+# DAILY INTELLIGENCE V5.5
 #
 # Editorial principle:
 #   The Brief = only the most consequential developments.
 #   Markets   = a dense financial-newspaper front page.
 #
-# V5.4:
-#   Adds real publisher/article image extraction.
-#   No stock images.
-#   No fabricated article images.
-#   Image failures never stop the news pipeline.
+# V5.5:
+#   Keeps V5.4 real publisher/article images.
+#   Adds freshness-aware editorial ranking across every page.
+#   Adds source-quality / corroboration ranking.
+#   Adds resilient content-based Indian Politics classification.
+#   Adds a politics discovery fallback when specialist RSS feeds fail.
+#   Derives developing status from recent multi-source movement.
+#   No stock images. No fabricated article images.
 #
 # No OpenAI/API calls.
 # No invented market data.
@@ -60,6 +63,10 @@ IMAGE_PAGE_TIMEOUT = 10.0
 MIN_CLUSTER_SCORE = 18
 BRIEF_MIN_SCORE = 43
 BRIEF_MAX = 8
+BRIEF_PRIMARY_FRESH_HOURS = 18
+BRIEF_FALLBACK_FRESH_HOURS = 30
+DEVELOPING_MAX_AGE_HOURS = 8
+DEVELOPING_MIN_SPAN_HOURS = 1
 
 
 # ============================================================
@@ -126,6 +133,18 @@ SOURCES = [
         "category": "Indian Politics",
         "url": "https://www.thehindu.com/news/national/politics/feeder/default.rss",
         "weight": 5,
+        "primary": False,
+    },
+
+    {
+        "name": "India Politics Discovery",
+        "category": "Indian Politics",
+        "url": google_news_feed(
+            '(Lok Sabha OR Rajya Sabha OR Parliament OR BJP OR Congress '
+            'OR election OR "chief minister" OR "Election Commission" '
+            'OR "INDIA bloc" OR NDA) India when:2d'
+        ),
+        "weight": 4,
         "primary": False,
     },
 
@@ -519,6 +538,28 @@ SCIENCE = re.compile(
     r"\b(climate|emissions|global warming|space mission|nasa|physics|"
     r"quantum|genome|scientists|researchers|discovery|telescope|"
     r"asteroid|renewable energy|clinical trial)\b",
+    re.I,
+)
+
+INDIAN_POLITICS = re.compile(
+    r"\b(lok sabha|rajya sabha|parliament|parliamentary|bjp|"
+    r"bharatiya janata party|congress|rahul gandhi|narendra modi|"
+    r"prime minister modi|amit shah|mallikarjun kharge|aap|"
+    r"trinamool|tmc|samajwadi party|dmk|aiadmk|shiv sena|ncp|"
+    r"nda|india bloc|opposition|ruling party|political party|"
+    r"assembly election|state election|general election|bypoll|"
+    r"by-election|election commission|electoral|campaign|manifesto|"
+    r"coalition|alliance|chief minister|deputy chief minister|mla|mp|"
+    r"cabinet reshuffle|confidence vote|no-confidence|speaker)\b",
+    re.I,
+)
+
+TRUSTED_PUBLISHER = re.compile(
+    r"\b(reuters|bbc|the hindu|indian express|mint|livemint|"
+    r"economic times|business standard|businessline|bloomberg|"
+    r"cnbc|ndtv|al jazeera|financial times|associated press|ap news|"
+    r"openai|deepmind|mit technology review|quanta|the verge|"
+    r"techcrunch|hugging face|reserve bank of india|rbi)\b",
     re.I,
 )
 
@@ -1316,6 +1357,11 @@ def parse_feed(data):
             },
         )
 
+        publisher = text_of(
+            node,
+            {"source"},
+        )
+
         link = text_of(
             node,
             {"link"},
@@ -1375,6 +1421,11 @@ def parse_feed(data):
                             date
                         ),
 
+                    "publisher":
+                        clean_html(
+                            publisher
+                        ),
+
                     "image_url":
                         image_from_feed_node(
                             node,
@@ -1411,8 +1462,14 @@ async def fetch(
         for row in rows:
             row.update(
                 {
-                    "source":
+                    "feed_source":
                         source["name"],
+
+                    "source":
+                        row.get(
+                            "publisher"
+                        )
+                        or source["name"],
 
                     "source_weight":
                         source["weight"],
@@ -1424,6 +1481,11 @@ async def fetch(
                         source.get(
                             "primary",
                             False,
+                        ),
+
+                    "discovery_source":
+                        source["url"].startswith(
+                            "https://news.google.com/"
                         ),
                 }
             )
@@ -1482,8 +1544,8 @@ def classify(article):
 
     base = article["base_category"]
 
-    # Dedicated discovery feeds take priority.
-
+    # Finance discovery feeds are purpose-built and keep their
+    # category so company / market / IPO stories do not bleed.
     if base in {
         "Indian Markets",
         "Global → India",
@@ -1510,6 +1572,7 @@ def classify(article):
         and base in {
             "Business & Micro",
             "Macro Economics",
+            "India",
         }
     ):
         return "Indian Markets"
@@ -1524,14 +1587,33 @@ def classify(article):
     ):
         return "AI"
 
+    # Economic policy beats generic politics. A story about RBI,
+    # inflation or the Budget should live in Economy even when a
+    # minister or party is quoted in the headline.
     if (
         MACRO.search(text)
         and base not in {
             "Geopolitics",
             "World Politics",
+            "Indian Politics",
         }
     ):
         return "Macro Economics"
+
+    # Politics cannot depend on two fragile specialist RSS feeds.
+    # Reclassify substantive political reporting discovered in
+    # general India / business feeds using article content.
+    if (
+        base == "Indian Politics"
+        or (
+            base in {
+                "India",
+                "Business & Micro",
+            }
+            and INDIAN_POLITICS.search(text)
+        )
+    ):
+        return "Indian Politics"
 
     if (
         GEO.search(text)
@@ -1743,7 +1825,7 @@ def article_signal(article):
 
     score += max(
         0,
-        28 - age * 0.7,
+        24 - age * 1.2,
     )
 
     if article.get(
@@ -1838,6 +1920,183 @@ def article_signal(article):
 
 
 # ============================================================
+# EDITORIAL RANKING
+#
+# Importance answers "how consequential is this?"
+# rank_score answers "what should be highest on the page now?"
+# ============================================================
+
+def freshness_rank_bonus(
+    published_at,
+    category,
+):
+    age = age_hours(
+        published_at
+    )
+
+    if age <= 2:
+        bonus = 32
+    elif age <= 6:
+        bonus = 25
+    elif age <= 12:
+        bonus = 16
+    elif age <= 18:
+        bonus = 9
+    elif age <= 24:
+        bonus = 3
+    elif age <= 36:
+        bonus = -8
+    elif age <= 48:
+        bonus = -18
+    elif age <= 72:
+        bonus = -30
+    else:
+        bonus = -44
+
+    # Markets decay faster than general explanatory coverage.
+    if category in {
+        "Indian Markets",
+        "Global → India",
+        "Companies & Earnings",
+    }:
+        if age > 24:
+            bonus -= 10
+        if age > 48:
+            bonus -= 8
+
+    return bonus
+
+
+def source_rank_adjustment(
+    members,
+    source_count,
+):
+    has_direct = any(
+        not article.get(
+            "discovery_source",
+            False,
+        )
+        for article in members
+    )
+
+    has_official = any(
+        article.get(
+            "primary_source",
+            False,
+        )
+        for article in members
+    )
+
+    has_trusted_publisher = any(
+        TRUSTED_PUBLISHER.search(
+            article.get(
+                "source",
+                "",
+            )
+        )
+        for article in members
+    )
+
+    adjustment = 0
+
+    if has_direct:
+        adjustment += 6
+
+    if has_official:
+        adjustment += 4
+
+
+    if has_trusted_publisher:
+        adjustment += 4
+
+    adjustment += min(
+        8,
+        max(
+            0,
+            source_count - 1,
+        ) * 3,
+    )
+
+    # A single Google News discovery hit is useful for recall,
+    # but should not beat equally important direct/corroborated
+    # reporting at the top of a page. Unknown single-source
+    # discovery publishers get the strongest penalty.
+    if (
+        source_count == 1
+        and all(
+            article.get(
+                "discovery_source",
+                False,
+            )
+            for article in members
+        )
+    ):
+        adjustment -= (
+            6
+            if has_trusted_publisher
+            else 16
+        )
+
+    return adjustment
+
+
+def developing_status(members):
+    if len(members) < 2:
+        return False
+
+    sources = {
+        article["source"]
+        for article in members
+    }
+
+    if len(sources) < 2:
+        return False
+
+    times = []
+
+    for article in members:
+        try:
+            times.append(
+                datetime.fromisoformat(
+                    article[
+                        "published_at"
+                    ].replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
+            )
+        except Exception:
+            pass
+
+    if len(times) < 2:
+        return False
+
+    latest = max(times)
+    earliest = min(times)
+
+    latest_age = max(
+        0,
+        (
+            datetime.now(
+                timezone.utc
+            ) - latest
+        ).total_seconds() / 3600,
+    )
+
+    span = (
+        latest - earliest
+    ).total_seconds() / 3600
+
+    return (
+        latest_age
+        <= DEVELOPING_MAX_AGE_HOURS
+        and span
+        >= DEVELOPING_MIN_SPAN_HOURS
+    )
+
+
+# ============================================================
 # CLUSTERING
 # ============================================================
 
@@ -1892,6 +2151,24 @@ def choose_primary(members):
                 6
                 if x.get(
                     "primary_source"
+                )
+                else 0
+            )
+            + (
+                8
+                if not x.get(
+                    "discovery_source",
+                    False,
+                )
+                else 0
+            )
+            + (
+                4
+                if TRUSTED_PUBLISHER.search(
+                    x.get(
+                        "source",
+                        "",
+                    )
                 )
                 else 0
             )
@@ -2051,6 +2328,18 @@ def make_cluster(members):
         for x in members
     )
 
+    rank_score = (
+        importance
+        + freshness_rank_bonus(
+            published,
+            category,
+        )
+        + source_rank_adjustment(
+            members,
+            len(sources),
+        )
+    )
+
     label = importance_label(
         members,
         importance,
@@ -2061,12 +2350,13 @@ def make_cluster(members):
         members
     )
 
-    # Prefer the primary article's genuine image. If the primary
-    # article has none, use the best available image from another
-    # article reporting the same clustered development.
     image_url = choose_cluster_image(
         members,
         primary,
+    )
+
+    is_developing = developing_status(
+        members
     )
 
     return {
@@ -2093,9 +2383,26 @@ def make_cluster(members):
         "published_at":
             published,
 
+        "latest_update_at":
+            published,
+
+        "freshness_hours":
+            round(
+                age_hours(
+                    published
+                ),
+                2,
+            ),
+
         "importance":
             round(
                 importance,
+                2,
+            ),
+
+        "rank_score":
+            round(
+                rank_score,
                 2,
             ),
 
@@ -2128,7 +2435,7 @@ def make_cluster(members):
             channels,
 
         "is_developing":
-            False,
+            is_developing,
 
         "summary_mode":
             "source-brief",
@@ -2299,7 +2606,10 @@ def cluster_articles(rows):
     return sorted(
         clusters,
         key=lambda x: (
-            x["importance"],
+            x.get(
+                "rank_score",
+                x["importance"],
+            ),
             x["published_at"],
         ),
         reverse=True,
@@ -2376,38 +2686,96 @@ CATEGORY_FAMILIES = {
 
 
 def select_brief(clusters):
-    eligible = [
-        cluster
-        for cluster in clusters
+    def qualifies(
+        cluster,
+        max_age,
+        allow_noteworthy=False,
+    ):
+        if cluster["category"] in {
+            "IPO",
+            "Mutual Funds",
+        }:
+            return False
+
+        age = age_hours(
+            cluster["published_at"]
+        )
+
         if (
-            cluster["category"]
-            not in {
-                "IPO",
-                "Mutual Funds",
-            }
-            and cluster[
+            age > max_age
+            and not cluster.get(
+                "is_developing",
+                False,
+            )
+        ):
+            return False
+
+        if (
+            cluster[
                 "importance_label"
             ]
-            in {
+            not in {
                 "critical",
                 "significant",
             }
-            and cluster[
-                "importance"
-            ]
+            and not allow_noteworthy
+        ):
+            return False
+
+        return (
+            cluster["importance"]
             >= BRIEF_MIN_SCORE
+        )
+
+    primary = [
+        cluster
+        for cluster in clusters
+        if qualifies(
+            cluster,
+            BRIEF_PRIMARY_FRESH_HOURS,
         )
     ]
 
-    selected = []
+    # If an unusually quiet cycle leaves too few strong stories,
+    # widen modestly to the fallback window rather than showing an empty Brief.
+    if len(primary) < 5:
+        seen = {
+            cluster["cluster_key"]
+            for cluster in primary
+        }
 
+        primary.extend(
+            cluster
+            for cluster in clusters
+            if (
+                cluster["cluster_key"]
+                not in seen
+                and qualifies(
+                    cluster,
+                    BRIEF_FALLBACK_FRESH_HOURS,
+                )
+            )
+        )
+
+    eligible = sorted(
+        primary,
+        key=lambda x: (
+            x.get(
+                "rank_score",
+                x["importance"],
+            ),
+            x["published_at"],
+        ),
+        reverse=True,
+    )
+
+    selected = []
     category_counts = Counter()
     family_counts = Counter()
 
-    # First pass: category diversity.
-
+    # First pass: force broad editorial diversity for the first
+    # five visible stories wherever the news cycle allows it.
     for cluster in eligible:
-
         category = cluster[
             "category"
         ]
@@ -2434,13 +2802,12 @@ def select_brief(clusters):
             family
         ] += 1
 
-        if len(selected) >= 6:
+        if len(selected) >= 5:
             break
 
-    # Second pass: genuinely important extras.
-
+    # Second pass fills the remainder by rank while respecting
+    # category / family caps. The frontend displays the first 5.
     for cluster in eligible:
-
         if len(selected) >= BRIEF_MAX:
             break
 
@@ -2759,7 +3126,10 @@ def build_mutual_fund_data(
     stories = sorted(
         stories,
         key=lambda x: (
-            x["importance"],
+            x.get(
+                "rank_score",
+                x["importance"],
+            ),
             x["published_at"],
         ),
         reverse=True,
@@ -2847,7 +3217,7 @@ def build_markets(clusters):
 async def main():
     headers = {
         "User-Agent":
-            "DailyIntelligence/5.4 "
+            "DailyIntelligence/5.5 "
             "(personal RSS intelligence reader)"
     }
 
@@ -3029,7 +3399,7 @@ async def main():
 
     payload = {
         "version":
-            "5.4",
+            "5.5",
 
         "generated_at":
             generated,
@@ -3050,10 +3420,13 @@ async def main():
             stale_filtered,
 
         "clustering_mode":
-            "editorial-markets-v5.4",
+            "editorial-freshness-v5.5",
 
         "summary_mode":
             "source-brief",
+
+        "ranking_mode":
+            "freshness-source-quality-v5.5",
 
         "sources":
             health,
@@ -3254,6 +3627,42 @@ async def main():
         == "critical"
     )
 
+    category_counts = Counter(
+        cluster["category"]
+        for cluster in clusters
+    )
+
+    politics_count = category_counts.get(
+        "Indian Politics",
+        0,
+    )
+
+    india_count = category_counts.get(
+        "India",
+        0,
+    )
+
+    developing_count = sum(
+        1
+        for cluster in clusters
+        if cluster.get(
+            "is_developing"
+        )
+    )
+
+    brief_ages = [
+        age_hours(
+            story["published_at"]
+        )
+        for story in top
+    ]
+
+    oldest_brief_age = (
+        max(brief_ages)
+        if brief_ages
+        else 0
+    )
+
     # Image QA.
     clusters_with_images = sum(
         1
@@ -3282,7 +3691,7 @@ async def main():
     print(
         "\n"
         "============================================\n"
-        "DAILY INTELLIGENCE V5.4\n"
+        "DAILY INTELLIGENCE V5.5\n"
         "============================================"
     )
 
@@ -3322,6 +3731,26 @@ async def main():
     print(
         f"Critical stories:      "
         f"{critical}"
+    )
+
+    print(
+        f"Oldest brief story:    "
+        f"{oldest_brief_age:.1f}h"
+    )
+
+    print(
+        f"Developing stories:    "
+        f"{developing_count}"
+    )
+
+    print(
+        f"India:                 "
+        f"{india_count}"
+    )
+
+    print(
+        f"Indian Politics:       "
+        f"{politics_count}"
     )
 
     print(
@@ -3373,6 +3802,22 @@ async def main():
         f"Healthy sources:       "
         f"{healthy}/{len(health)}"
     )
+
+    if (
+        politics_count == 0
+        and india_count >= 10
+    ):
+        print(
+            "\nWARNING: Indian Politics is empty "
+            "while India has substantial coverage. "
+            "Check politics discovery/classification."
+        )
+
+    if oldest_brief_age > BRIEF_FALLBACK_FRESH_HOURS:
+        print(
+            "\nWARNING: Brief contains a story older "
+            "than the freshness fallback window."
+        )
 
     if failed:
 
